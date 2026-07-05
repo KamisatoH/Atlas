@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  itineraries Itinerary[]
+}
+
+model Itinerary {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  payload   String   // JSON: TripState snapshot
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

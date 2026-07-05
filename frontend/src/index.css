@@ -1,0 +1,833 @@
+@import 'tailwindcss';
+
+:root {
+  --mf-bg: #eef2f6;
+  --mf-surface: #ffffff;
+  --mf-emerald: #059669;
+  --mf-emerald-soft: #ecfdf5;
+  --mf-violet: #7c3aed;
+  --mf-violet-soft: #f5f3ff;
+  --mf-text: #1e293b;
+  --mf-muted: #64748b;
+  --mf-border: rgba(226, 232, 240, 0.95);
+  --mf-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --mf-shadow-md: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --mf-shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.1);
+  --mf-radius: 16px;
+  --mf-radius-lg: 20px;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  background: var(--mf-bg);
+  color: var(--mf-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ant-layout {
+  min-height: 100vh;
+}
+
+.ant-layout.map-workspace-layout {
+  min-height: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(16, 185, 129, 0.12), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 95% 0%, rgba(124, 58, 237, 0.08), transparent 50%),
+    var(--mf-bg);
+}
+
+/* —— 顶栏 —— */
+.ant-layout-header.map-workspace-header {
+  height: auto !important;
+  min-height: 56px;
+  line-height: 1.5 !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom: 1px solid var(--mf-border);
+  box-shadow: var(--mf-shadow-sm);
+}
+
+.brand-logo {
+  display: flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #34d399 0%, #059669 55%, #047857 100%);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+}
+
+.brand-title {
+  color: var(--mf-text);
+}
+
+.brand-tagline {
+  color: var(--mf-muted);
+  margin-top: 2px;
+}
+
+.header-nav-pills {
+  padding: 3px;
+  border-radius: 14px;
+  background: rgba(241, 245, 249, 0.85);
+  border: 1px solid var(--mf-border);
+}
+
+.header-nav-btn {
+  border-radius: 10px !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-weight: 500;
+}
+
+.header-nav-btn--ai:not(.is-active) {
+  color: #6d28d9 !important;
+  background: transparent !important;
+}
+
+.header-nav-btn--ai.is-active {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
+  border-color: transparent !important;
+}
+
+.header-nav-btn--trip:not(.is-active) {
+  color: #047857 !important;
+  background: transparent !important;
+}
+
+.header-nav-btn--trip.is-active {
+  background: linear-gradient(135deg, #34d399, #059669) !important;
+  border-color: transparent !important;
+}
+
+.user-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid var(--mf-border);
+}
+
+.header-login-btn {
+  border-radius: 10px !important;
+}
+
+/* —— 地图区 —— */
+.map-shell {
+  border-radius: var(--mf-radius-lg);
+  background: var(--mf-surface);
+  border: 1px solid var(--mf-border);
+  box-shadow: var(--mf-shadow-md);
+  overflow: hidden;
+}
+
+.map-shell .amap-container {
+  border-radius: 0;
+}
+
+.map-footer-hint {
+  padding: 8px 14px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--mf-muted);
+  background: linear-gradient(180deg, transparent, rgba(248, 250, 252, 0.95));
+  border-top: 1px solid rgba(241, 245, 249, 0.9);
+}
+
+/* —— 探索面板 —— */
+.search-explore-panel {
+  padding: 14px 16px;
+  border-radius: var(--mf-radius);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: var(--mf-shadow-md);
+  backdrop-filter: blur(14px) saturate(1.15);
+}
+
+.panel-title-row {
+  align-items: center;
+}
+
+.panel-title-icon {
+  display: flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--mf-emerald-soft);
+  color: var(--mf-emerald);
+  font-size: 14px;
+}
+
+.poi-search-input .ant-input-affix-wrapper {
+  border-radius: 12px;
+  border-color: #e2e8f0;
+  background: #fff;
+  padding-block: 6px;
+}
+
+.poi-search-input .ant-input-affix-wrapper:hover,
+.poi-search-input .ant-input-affix-wrapper-focused {
+  border-color: #6ee7b7;
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.12);
+}
+
+.poi-preview-card {
+  border-radius: 14px !important;
+  border: 1px solid rgba(52, 211, 153, 0.2) !important;
+  background: linear-gradient(180deg, #fff, #f0fdf4) !important;
+}
+
+.search-city-banner {
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 10px;
+}
+
+.mf-nearby-poi:hover {
+  background: #ecfdf5;
+}
+
+.mf-nearby-poi:hover .mf-nearby-poi-action {
+  color: #059669 !important;
+}
+
+/* —— 底栏工具条 —— */
+.workspace-toolbar {
+  border-radius: var(--mf-radius);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--mf-border);
+  box-shadow: var(--mf-shadow-sm);
+  backdrop-filter: blur(10px);
+}
+
+.toolbar-group {
+  align-items: center;
+}
+
+.toolbar-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  padding: 0 4px;
+  user-select: none;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin-inline: 4px;
+  background: #e2e8f0;
+}
+
+.workspace-toolbar .ant-btn-text {
+  color: var(--mf-muted);
+  border-radius: 8px;
+}
+
+.workspace-toolbar .ant-btn-text:hover {
+  color: var(--mf-emerald);
+  background: var(--mf-emerald-soft);
+}
+
+/* —— 侧栏 Shell —— */
+.shell-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shell-bar-icon {
+  display: flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.shell-bar-icon--ai {
+  background: var(--mf-violet-soft);
+  color: var(--mf-violet);
+}
+
+.shell-bar-icon--trip {
+  background: var(--mf-emerald-soft);
+  color: var(--mf-emerald);
+}
+
+.shell-close-btn {
+  color: var(--mf-muted) !important;
+  border-radius: 8px !important;
+}
+
+.shell-close-btn:hover {
+  color: var(--mf-text) !important;
+  background: #f1f5f9 !important;
+}
+
+.agent-assistant-shell,
+.trip-planning-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  flex: 0 0 auto;
+  border-radius: var(--mf-radius-lg);
+  background: var(--mf-surface);
+  box-shadow: var(--mf-shadow-lg);
+  border: 1px solid var(--mf-border);
+  animation: panel-slide-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.agent-assistant-shell {
+  width: clamp(300px, 34vw, 420px);
+  max-width: min(420px, 44vw);
+}
+
+.trip-planning-shell {
+  width: clamp(320px, 48vw, 960px);
+  max-width: min(960px, 58vw);
+}
+
+.agent-assistant-shell-bar,
+.trip-planning-shell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.agent-assistant-shell-bar {
+  background: linear-gradient(180deg, #faf5ff 0%, #fff 100%);
+}
+
+.trip-planning-shell-bar {
+  background: linear-gradient(180deg, #f0fdf4 0%, #fff 100%);
+}
+
+@keyframes panel-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.agent-assistant-shell-body,
+.trip-planning-shell-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-assistant-shell .free-agent-panel--embedded {
+  border-radius: 0;
+}
+
+.trip-panel--embedded {
+  border-radius: 0;
+}
+
+/* —— 行程面板 —— */
+.trip-panel-header {
+  border-bottom: 1px solid #f1f5f9;
+  background: linear-gradient(180deg, #fafafa, #fff);
+}
+
+.section-title,
+.field-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--mf-muted);
+  text-transform: uppercase;
+}
+
+.trip-panel-setup {
+  max-height: 38vh;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbfc;
+}
+
+.day-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.day-chip:hover {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+  color: #047857;
+}
+
+.day-chip--active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #34d399, #059669);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(5, 150, 105, 0.28);
+}
+
+.day-chip-date {
+  opacity: 0.85;
+  font-weight: 400;
+}
+
+.add-to-trip-section {
+  border-radius: 14px;
+  border: 1px dashed rgba(52, 211, 153, 0.45);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9), rgba(255, 255, 255, 0.95));
+}
+
+.add-day-btn {
+  border-radius: 10px !important;
+  color: var(--mf-emerald) !important;
+  border-color: rgba(52, 211, 153, 0.4) !important;
+}
+
+.map-workspace-calendar.ant-picker-calendar-mini .ant-picker-content th,
+.map-workspace-calendar.ant-picker-calendar-mini .ant-picker-content td {
+  padding-block: 1px;
+  font-size: 12px;
+}
+
+.trip-panel .ant-table-thead > tr > th {
+  background: #f8fafc !important;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 8px !important;
+}
+
+.trip-panel .ant-table-tbody > tr > td {
+  font-size: 13px;
+  padding: 8px !important;
+}
+
+.trip-panel .trip-stops-section {
+  min-height: 280px;
+}
+
+.trip-calendar-collapse .ant-collapse-header {
+  padding: 4px 0 !important;
+}
+
+.trip-calendar-collapse .ant-collapse-content-box {
+  padding: 0 !important;
+}
+
+.trip-panel .trip-stop-row {
+  transition: background-color 0.15s ease;
+}
+
+.trip-panel .trip-drag-handle:hover {
+  color: #10b981;
+}
+
+.trip-panel .trip-stop-row-drag-over > td {
+  border-top: 2px solid #34d399 !important;
+}
+
+/* —— AI 对话 —— */
+.free-agent-panel .agent-bubble {
+  word-break: break-word;
+}
+
+.free-agent-messages {
+  scroll-behavior: smooth;
+  background:
+    linear-gradient(180deg, #fafafa 0%, #fff 40%),
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.04), transparent 40%);
+}
+
+.free-agent-input {
+  background: #fff;
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+.free-agent-input textarea.ant-input {
+  resize: none;
+  border-radius: 12px !important;
+  border-color: #e2e8f0 !important;
+}
+
+.free-agent-input textarea.ant-input:focus {
+  border-color: #c4b5fd !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12) !important;
+}
+
+.free-agent-input .ant-btn-primary {
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3) !important;
+}
+
+.chat-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.chat-row--user {
+  justify-content: flex-end;
+}
+
+.chat-row--assistant {
+  justify-content: flex-start;
+}
+
+.chat-avatar {
+  flex-shrink: 0;
+  display: flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-avatar--ai {
+  background: var(--mf-violet-soft);
+  color: var(--mf-violet);
+  font-size: 13px;
+}
+
+.chat-avatar--user {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: #fff;
+}
+
+.agent-bubble {
+  border-radius: 16px;
+  padding: 10px 14px;
+}
+
+.agent-bubble--user {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.22);
+}
+
+.agent-bubble--assistant {
+  background: #fff;
+  color: #334155;
+  border: 1px solid #f1f5f9;
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+.agent-bubble--typing {
+  min-width: 120px;
+}
+
+.agent-plan-card {
+  margin-top: 10px;
+  border-radius: 14px !important;
+  border: 1px solid rgba(52, 211, 153, 0.25) !important;
+  background: linear-gradient(180deg, #f0fdf4, #fff) !important;
+}
+
+.agent-multi-plan {
+  border-radius: 14px !important;
+  border: 1px solid rgba(139, 92, 246, 0.2) !important;
+  background: linear-gradient(180deg, #faf5ff, #fff) !important;
+}
+
+.free-agent-header {
+  background: linear-gradient(180deg, #faf5ff, #fff);
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* —— 地图浮动按钮 —— */
+.workspace-main {
+  position: relative;
+}
+
+.map-panel-entries {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  transform: translateY(-50%);
+}
+
+.trip-planning-entry {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: auto !important;
+  min-height: 72px;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mf-shadow-lg);
+  line-height: 1.25;
+  border: none !important;
+  background: linear-gradient(135deg, #34d399, #059669) !important;
+}
+
+.map-panel-entries .trip-planning-entry {
+  position: static;
+  transform: none;
+}
+
+.agent-assistant-entry {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: auto !important;
+  min-height: 72px;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mf-shadow-lg);
+  line-height: 1.25;
+  border: none !important;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
+}
+
+.agent-assistant-entry-label,
+.trip-planning-entry-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.trip-planning-entry-summary {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.92;
+  max-width: 7rem;
+  text-align: center;
+  white-space: normal;
+}
+
+@media (max-width: 900px) {
+  .workspace-main {
+    flex-direction: column !important;
+  }
+
+  .trip-planning-shell,
+  .agent-assistant-shell {
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    margin-top: 0;
+    max-height: 45vh;
+  }
+
+  .map-panel-entries {
+    top: auto;
+    bottom: 56px;
+    right: 12px;
+    transform: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .map-panel-entries .trip-planning-entry,
+  .map-panel-entries .agent-assistant-entry {
+    min-height: auto;
+    flex-direction: row !important;
+    padding: 10px 16px !important;
+  }
+
+  .map-panel-entries .trip-planning-entry-summary {
+    max-width: none;
+  }
+
+  .free-agent-panel {
+    max-width: none !important;
+    max-height: 42vh;
+  }
+
+  .header-nav-pills {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* —— 新手引导 —— */
+body.onboarding-active {
+  overflow: hidden;
+}
+
+.onboarding-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  pointer-events: auto;
+}
+
+.onboarding-dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(2px);
+  animation: onboarding-fade-in 0.25s ease;
+}
+
+.onboarding-spotlight {
+  position: fixed;
+  z-index: 10051;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 0 9999px rgba(15, 23, 42, 0.58),
+    0 8px 32px rgba(5, 150, 105, 0.35);
+  animation: onboarding-spotlight-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+@keyframes onboarding-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes onboarding-spotlight-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.onboarding-tooltip {
+  position: fixed;
+  z-index: 10052;
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px 18px 14px;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+  animation: onboarding-tooltip-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.onboarding-tooltip--center {
+  text-align: center;
+}
+
+.onboarding-tooltip--center .onboarding-tooltip-actions {
+  justify-content: center;
+}
+
+.onboarding-tooltip--center .onboarding-tooltip-actions .flex {
+  justify-content: center;
+}
+
+@keyframes onboarding-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-tooltip-header {
+  margin-bottom: 8px;
+}
+
+.onboarding-step-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+  color: #047857;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.onboarding-tooltip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.onboarding-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.onboarding-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.onboarding-dot.is-active {
+  width: 18px;
+  background: linear-gradient(90deg, #34d399, #059669);
+}

@@ -1,0 +1,18 @@
+# 依赖与构建
+**/node_modules/
+**/dist/
+
+# 环境与密钥
+**/.env
+**/.env.local
+!**/.env.example
+
+# 本地数据库
+**/*.db
+**/*.db-journal
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.log
