@@ -24,9 +24,14 @@ export function SearchExplorePanel({
         <span className="panel-title-icon">
           <SearchOutlined />
         </span>
-        <Text strong className="text-sm text-slate-800">
-          探索目的地
-        </Text>
+        <div className="min-w-0 flex-1">
+          <Text strong className="block text-sm text-slate-800">
+            探索目的地
+          </Text>
+          <Text type="secondary" className="block text-[11px]">
+            从地图灵感开始，把地点送进你的旅行工作台
+          </Text>
+        </div>
       </div>
 
       {searchCity && (
@@ -43,6 +48,11 @@ export function SearchExplorePanel({
       )}
 
       <PoiSearch city={searchCity} onSelect={onSelectPoi} placeholder="搜索景点、餐厅、酒店…" />
+      <div className="search-suggestion-row mt-2 flex flex-wrap gap-1.5">
+        <span className="search-suggestion-pill">双击地图选点</span>
+        <span className="search-suggestion-pill">点击周边店铺加入</span>
+        <span className="search-suggestion-pill">酒店也能作为每日起终点</span>
+      </div>
       <Text type="secondary" className="mt-1.5 block text-xs leading-relaxed">
         搜索或双击地图选点；选定地点后将按所属城市限定后续搜索。
       </Text>

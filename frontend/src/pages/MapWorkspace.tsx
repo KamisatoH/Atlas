@@ -163,6 +163,24 @@ export function MapWorkspace() {
     return `${displayStops.length} 站`;
   }, [days, day?.title, activeDayIndex, displayStops.length]);
 
+  const workspaceMetrics = useMemo(() => {
+    const totalStops = days.reduce((n, d) => n + d.stops.length, 0);
+    const filledDays = days.filter((d) => d.stops.length > 0).length;
+    const currentDateLabel = planDayLabel(planStartDate, activeDayIndex, 'long');
+    const currentStops = displayStops.length;
+    const totalTravelMinutes = displayStops
+      .slice(0, -1)
+      .reduce((sum, stop) => sum + (stop.travelMinutesToNext ?? 0), 0);
+
+    return {
+      totalStops,
+      filledDays,
+      currentDateLabel,
+      currentStops,
+      totalTravelMinutes,
+    };
+  }, [activeDayIndex, days, displayStops, planStartDate]);
+
   const onSegmentMinutes = useCallback(
     (fromStopId: string, minutes: number) => {
       setTravelMinutes(activeDayIndex, fromStopId, minutes);
@@ -502,6 +520,35 @@ export function MapWorkspace() {
             message="请在 frontend/.env 配置 VITE_AMAP_KEY 后重启开发服务"
           />
         )}
+
+        <section className="workspace-hero mb-3 shrink-0">
+          <div className="workspace-hero-copy">
+            <span className="workspace-hero-kicker">Atlas Workspace</span>
+            <h1 className="workspace-hero-title">
+              用地图组织灵感，用 AI 把旅行变成可以落地的日程。
+            </h1>
+            <p className="workspace-hero-subtitle">
+              先搜地点、再让助手生成路线，最后把交通、停留时长和每天节奏调成你真正想走的版本。
+            </p>
+          </div>
+          <div className="workspace-hero-metrics">
+            <div className="workspace-metric-card">
+              <span className="workspace-metric-label">当前规划日</span>
+              <strong>{workspaceMetrics.currentDateLabel ?? day?.title ?? `第 ${activeDayIndex + 1} 天`}</strong>
+              <span>{workspaceMetrics.currentStops > 0 ? `${workspaceMetrics.currentStops} 个站点已排入` : '还没有加入站点'}</span>
+            </div>
+            <div className="workspace-metric-card">
+              <span className="workspace-metric-label">旅程进度</span>
+              <strong>{workspaceMetrics.filledDays} / {days.length} 天已成型</strong>
+              <span>{workspaceMetrics.totalStops > 0 ? `累计 ${workspaceMetrics.totalStops} 个地点` : '从搜索、地图双击或 AI 助手开始'}</span>
+            </div>
+            <div className="workspace-metric-card">
+              <span className="workspace-metric-label">今日节奏</span>
+              <strong>{workspaceMetrics.totalTravelMinutes > 0 ? `在途约 ${workspaceMetrics.totalTravelMinutes} 分钟` : '等待路线生成'}</strong>
+              <span>{warnings.length > 0 ? `有 ${warnings.length} 条时间提醒待处理` : '路线顺序与时间将自动联动更新'}</span>
+            </div>
+          </div>
+        </section>
 
         <div className="workspace-main flex min-h-0 min-w-0 flex-1 gap-3">
           <div className="map-shell relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

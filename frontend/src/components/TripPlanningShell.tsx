@@ -42,9 +42,14 @@ export function TripPlanningShell({ open, onClose, children }: TripPlanningShell
           <span className="shell-bar-icon shell-bar-icon--trip">
             <CalendarOutlined />
           </span>
-          <Text strong className="text-sm text-slate-800">
-            行程规划
-          </Text>
+          <div>
+            <Text strong className="block text-sm text-slate-800">
+              行程规划
+            </Text>
+            <Text type="secondary" className="block text-[11px]">
+              调整每天节奏、交通方式与站点顺序
+            </Text>
+          </div>
         </div>
         <Button
           type="text"

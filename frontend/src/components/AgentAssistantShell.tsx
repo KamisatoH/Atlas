@@ -40,9 +40,14 @@ export function AgentAssistantShell({ open, onClose, children }: AgentAssistantS
           <span className="shell-bar-icon shell-bar-icon--ai">
             <RobotOutlined />
           </span>
-          <Text strong className="text-sm text-slate-800">
-            AI 助手
-          </Text>
+          <div>
+            <Text strong className="block text-sm text-slate-800">
+              AI 助手
+            </Text>
+            <Text type="secondary" className="block text-[11px]">
+              对话生成多日路线，自动落到地图与日历
+            </Text>
+          </div>
         </div>
         <Button
           type="text"

@@ -21,7 +21,7 @@ export default function App() {
           colorText: '#1e293b',
           colorTextSecondary: '#64748b',
           fontFamily:
-            "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+            "'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif",
           boxShadowSecondary:
             '0 4px 24px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
         },
