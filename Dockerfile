@@ -7,6 +7,12 @@ FROM node:20-slim AS builder
 
 WORKDIR /build
 
+# CloudBase 构建时通过 Build Args 注入前端公开配置；不要把后端密钥放在这里。
+ARG VITE_AMAP_KEY
+ARG VITE_AMAP_SECURITY_JS_CODE
+ENV VITE_AMAP_KEY=${VITE_AMAP_KEY}
+ENV VITE_AMAP_SECURITY_JS_CODE=${VITE_AMAP_SECURITY_JS_CODE}
+
 # 前端：安装依赖
 COPY frontend/package.json frontend/package-lock.json ./frontend/
 RUN cd frontend && npm ci
