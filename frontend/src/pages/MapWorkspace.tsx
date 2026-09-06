@@ -465,7 +465,7 @@ export function MapWorkspace() {
               data-tour="ai-assistant"
               onClick={() => setAgentPanelOpen((v) => !v)}
             >
-              {agentPanelOpen ? '收起助手' : 'AI 助手'}
+              <span className="header-nav-btn-label">{agentPanelOpen ? '收起助手' : 'AI 助手'}</span>
             </Button>
             <Button
               type={tripPanelOpen ? 'primary' : 'default'}
@@ -474,7 +474,7 @@ export function MapWorkspace() {
               data-tour="trip-planning"
               onClick={() => setTripPanelOpen((v) => !v)}
             >
-              {tripPanelOpen ? '收起规划' : '行程规划'}
+              <span className="header-nav-btn-label">{tripPanelOpen ? '收起规划' : '行程规划'}</span>
             </Button>
           </div>
 
@@ -551,6 +551,17 @@ export function MapWorkspace() {
         </section>
 
         <div className="workspace-main flex min-h-0 min-w-0 flex-1 gap-3">
+          {(agentPanelOpen || tripPanelOpen) && (
+            <button
+              type="button"
+              className="mobile-panel-scrim"
+              aria-label="关闭当前面板"
+              onClick={() => {
+                setAgentPanelOpen(false);
+                setTripPanelOpen(false);
+              }}
+            />
+          )}
           <div className="map-shell relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)]" data-tour="map-explore">
               <SearchExplorePanel

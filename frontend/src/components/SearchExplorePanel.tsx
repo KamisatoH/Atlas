@@ -53,7 +53,7 @@ export function SearchExplorePanel({
         <span className="search-suggestion-pill">点击周边店铺加入</span>
         <span className="search-suggestion-pill">酒店也能作为每日起终点</span>
       </div>
-      <Text type="secondary" className="mt-1.5 block text-xs leading-relaxed">
+      <Text type="secondary" className="search-explore-hint mt-1.5 block text-xs leading-relaxed">
         搜索或双击地图选点；选定地点后将按所属城市限定后续搜索。
       </Text>
 

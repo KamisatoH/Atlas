@@ -1,0 +1,15 @@
+# 依赖与构建产物在镜像内重新生成，无需打进构建上下文
+**/node_modules
+**/dist
+
+# 版本库与本地文件
+**/.git
+.gitignore
+*.md
+
+# 本地数据库文件（SQLite 已废弃，勿打包）
+**/*.db
+**/*.db-journal
+
+# 后端密钥不进构建上下文（前端 .env 保留：高德 Key 需在构建期内联）
+server/.env
