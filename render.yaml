@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: atlas
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: >-
+      cd frontend && npm ci && npm run build &&
+      cd ../server && npm ci --include=dev &&
+      npx prisma generate && npm run build
+    startCommand: >-
+      cd server && npx prisma db push --skip-generate && node dist/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: PORT
+        value: "10000"
+      - key: VITE_AMAP_KEY
+        sync: false
+      - key: VITE_AMAP_SECURITY_JS_CODE
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://api.deepseek.com
+      - key: OPENAI_MODEL
+        value: deepseek-chat
+      - key: OPENAI_TIMEOUT_MS
+        value: "90000"
+      - key: OPENAI_MAX_TOKENS
+        value: "4096"
