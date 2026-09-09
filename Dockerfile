@@ -27,9 +27,9 @@ RUN cd server && npm ci
 # 后端源码 + Prisma schema
 COPY server/ ./server/
 
-# 生成 Prisma Client（postgresql provider）+ 编译 TypeScript
-# generate 阶段不连接数据库，占位 DATABASE_URL 仅为满足 schema/env 解析；真实值在运行时注入
-RUN cd server && DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/atlas?sslmode=require" npx prisma generate && npm run build
+# 生成 Prisma Client（SQLite provider）+ 编译 TypeScript。
+# 注意：CloudBase 容器文件系统不适合保存 SQLite 正式数据；SQLite 部署请使用 Lighthouse 指南。
+RUN cd server && DATABASE_URL="file:./atlas.db" npx prisma generate && npm run build
 
 # 编译前端（生产环境）
 RUN cd frontend && npm run build
@@ -38,7 +38,10 @@ RUN cd frontend && npm run build
 FROM node:20-slim AS runner
 
 ENV NODE_ENV=production \
-    PORT=3001
+    PORT=3001 \
+    AI_REQUIRE_AUTH=true \
+    AI_RATE_LIMIT_MAX=20 \
+    AI_RATE_LIMIT_WINDOW_MS=60000
 
 WORKDIR /app/server
 
@@ -58,4 +61,4 @@ COPY --from=builder /build/frontend/dist ../frontend/dist
 EXPOSE 3001
 
 # 启动时先同步数据库表结构（幂等），再启动服务
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
+CMD ["sh", "-c", "npm run db:push && node dist/index.js"]

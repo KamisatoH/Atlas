@@ -6,7 +6,14 @@ export interface AuthPayload {
   email: string;
 }
 
-const secret = process.env.JWT_SECRET || 'dev-secret';
+const configuredSecret = process.env.JWT_SECRET?.trim();
+
+// 本地开发允许不配置密钥，方便启动；生产环境绝不能悄悄回退到公开默认值。
+if (process.env.NODE_ENV === 'production' && !configuredSecret) {
+  throw new Error('JWT_SECRET must be configured in production');
+}
+
+const secret = configuredSecret || 'dev-secret';
 
 export function signToken(payload: AuthPayload): string {
   return jwt.sign(payload, secret, { expiresIn: '14d' });

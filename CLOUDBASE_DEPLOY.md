@@ -1,5 +1,7 @@
 # Atlas 旅行攻略 · CloudBase 云托管部署指南
 
+> **已不适用于当前 SQLite 方案。** CloudBase 云托管容器的本地文件不适合作为 SQLite 的持久化数据盘；请改用 `LIGHTHOUSE_CLOUDBASE_DEPLOY.md`，将 SQLite 放在 Lighthouse 的持久化目录，并由 CloudBase 静态托管 + HTTP 访问服务提供 HTTPS 与 `/api` 路由。
+
 把前后端一起部署到腾讯云开发（CloudBase）云托管，**电脑和手机用同一个 HTTPS 域名访问**。
 
 ## 最终架构
@@ -23,7 +25,7 @@ CloudBase 云托管（一个容器，Node 20）
 | 事项 | 说明 |
 |---|---|
 | CloudBase 环境 | 在 [云开发控制台](https://tcb.cloud.tencent.com/dev) 开通，地域选 **上海**（云托管当前支持地域） |
-| 高德地图 Key | 已有（`frontend/.env` 里的 `VITE_AMAP_KEY` + 安全密钥），构建时自动内联进前端 |
+| 高德地图 Key | 作为 CloudBase 构建参数传入；Vite 会在构建时内联进前端 |
 | DeepSeek API Key | 需换成你自己账号的 Key（生产环境不要用本地测试 key） |
 | Docker（可选） | 若用「镜像部署」或想本地先验证构建，需安装 Docker |
 
@@ -65,9 +67,11 @@ postgresql://用户名:密码@主机:端口/数据库名?sslmode=require
 2. 部署方式选 **代码部署** 或 **镜像部署**：
    - 代码部署：上传整个项目（`Dockerfile` 在根目录，云端自动构建）。
    - 镜像部署：先本地 `docker build -t atlas .` 再推到腾讯云容器镜像服务，选择该镜像。
-3. **监听端口**设为 **3001**（与 `PORT` 环境变量一致）。
+3. **容器监听端口**设为 **3001**（与镜像默认 `PORT` 一致）。如果控制台为服务自动分配端口，则把 `PORT` 改成控制台分配的端口；应用会读取该变量。
 4. 运行模式建议「始终自动扩缩容」，最小实例数设为 **1**（避免冷启动；`db push` 也只需跑一次，单实例更稳）。
-5. 填好环境变量（见下表），发布。
+5. 在构建设置中填入构建参数 `VITE_AMAP_KEY` 和 `VITE_AMAP_SECURITY_JS_CODE`，再填好运行时环境变量（见下表），发布。
+
+> 构建参数只用于生成浏览器端静态文件。`DATABASE_URL`、`JWT_SECRET`、`OPENAI_API_KEY` 等后端密钥只能放在运行时环境变量中，不能写进 Dockerfile、前端变量或 Git 仓库。
 
 ### 方式 B：本地 Docker 构建验证（可选）
 
@@ -87,7 +91,18 @@ docker run --rm -p 3001:3001 \
 
 ---
 
-## 五、环境变量清单（云托管「服务配置 → 环境变量」里填）
+## 五、构建参数与环境变量
+
+### 5.1 构建参数（云托管构建设置中填写）
+
+| 参数 | 必填 | 用途 |
+|---|---|---|
+| `VITE_AMAP_KEY` | ✅ | 高德 Web 端 Key；构建后会出现在浏览器代码中 |
+| `VITE_AMAP_SECURITY_JS_CODE` | 推荐 | 高德安全密钥；用于高德 JS API 的安全校验 |
+
+这两个值对应根目录 `Dockerfile` 的 `ARG`。CloudBase 从代码构建时不会读取未提交的本地 `frontend/.env`，因此必须在构建参数中配置。
+
+### 5.2 运行时环境变量（云托管「服务配置 → 环境变量」里填）
 
 | 变量 | 必填 | 示例 |
 |---|---|---|
@@ -96,11 +111,15 @@ docker run --rm -p 3001:3001 \
 | `OPENAI_API_KEY` | ✅ | 你自己的 DeepSeek Key |
 | `OPENAI_BASE_URL` | ✅ | `https://api.deepseek.com` |
 | `OPENAI_MODEL` | ✅ | `deepseek-chat`（或 `deepseek-reasoner`） |
-| `PORT` | 可选 | `3001`（默认即 3001） |
+| `PORT` | 可选 | `3001`（默认值；若平台分配端口则使用平台值） |
 | `OPENAI_TIMEOUT_MS` | 可选 | `90000` |
 | `OPENAI_MAX_TOKENS` | 可选 | `8192` |
+| `AI_REQUIRE_AUTH` | 推荐 | `true`；仅允许已登录用户调用 AI |
+| `AI_RATE_LIMIT_MAX` | 可选 | `20`；每个 IP 在限流窗口内最多调用次数 |
+| `AI_RATE_LIMIT_WINDOW_MS` | 可选 | `60000`；限流窗口（毫秒） |
+| `CORS_ORIGIN` | 通常不需要 | 同域部署无需设置；仅跨域前端时填 HTTPS 域名 |
 
-> 前端高德 Key **不需要**在这里配置——它们在 `frontend/.env` 里，构建时已打进 JS 产物。
+> 前端高德 Key 不要作为后端运行时密钥处理；它们需要在构建参数中配置，构建后会打进 JS 产物。
 
 ---
 
@@ -171,5 +190,5 @@ CREATE INDEX "Itinerary_userId_idx" ON "Itinerary"("userId");
 - **云托管**：按量计费（最小 0.25 核 0.5GB，按秒），无流量可缩容到 0，个人使用成本很低。
 - **PostgreSQL**：按需计费，注意「自动暂停」冷启动；不想等可关闭自动暂停。
 - **DeepSeek**：按 token 计费，与云托管无关。
-- **安全**：`JWT_SECRET` 必须改强；`server/.env`（含真实 DeepSeek Key）不要提交到公开仓库（已在 `.gitignore` 与 `.dockerignore` 中排除）。
+- **安全**：生产镜像会在 `JWT_SECRET` 缺失时拒绝启动，默认要求登录后才能调用 AI，并按 IP 限流；`server/.env`（含真实 DeepSeek Key）不要提交到公开仓库（已在 `.gitignore` 与 `.dockerignore` 中排除）。
 - **自定义域名**：CloudBase 默认域名无需备案；绑定自有域名需完成 ICP 备案。

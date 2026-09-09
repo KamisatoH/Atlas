@@ -7,8 +7,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate"
+    "db:push": "npm run db:generate && node scripts/pushSqliteSchema.mjs",
+    "db:generate": "prisma generate",
+    "db:backup": "node scripts/backupSqlite.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

@@ -10,10 +10,19 @@ import { aiRouter } from './routes/ai';
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+// CloudBase 位于反向代理之后；启用后 req.ip 才能用于 AI 限流。
+app.set('trust proxy', 1);
 
 app.use(
   cors({
-    origin: true,
+    // 生产环境默认同域，不返回 CORS 头；若确有跨域前端，再显式配置 CORS_ORIGIN。
+    origin: corsOrigins.length ? corsOrigins : isProduction ? false : true,
     credentials: true,
   })
 );

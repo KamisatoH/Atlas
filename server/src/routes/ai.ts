@@ -4,9 +4,19 @@ import {
   buildAgentSystemPrompt,
 } from '../lib/agentPrompts';
 import { LlmParseError, parseAssistantJson, extractAssistantText } from '../lib/llmJson';
+import { authRequired } from '../middleware/auth';
+import { aiRateLimit } from '../middleware/aiRateLimit';
 
-/** 不强制登录：便于试用；生产环境可加限流或鉴权 */
+/** 开发环境可匿名试用；CloudBase 生产镜像默认要求登录并启用限流。 */
 export const aiRouter = Router();
+
+function aiAuthIfRequired(req: Parameters<typeof authRequired>[0], res: Parameters<typeof authRequired>[1], next: Parameters<typeof authRequired>[2]) {
+  if (process.env.AI_REQUIRE_AUTH?.trim().toLowerCase() === 'true') {
+    authRequired(req, res, next);
+    return;
+  }
+  next();
+}
 
 type ChatMsg = { role: 'user' | 'assistant'; content: string };
 
@@ -63,7 +73,7 @@ aiRouter.get('/status', (_req, res) => {
   });
 });
 
-aiRouter.post('/chat', async (req, res) => {
+aiRouter.post('/chat', aiAuthIfRequired, aiRateLimit, async (req, res) => {
   const messages = req.body?.messages as ChatMsg[] | undefined;
   const context = req.body?.context as AgentChatContext | undefined;
 
