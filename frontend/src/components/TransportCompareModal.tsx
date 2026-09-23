@@ -43,13 +43,13 @@ function RouteCard({
             {r.title}
           </Text>
           {r.policyHint && (
-            <Tag bordered={false} color="processing" className="!m-0">
+            <Tag bordered={false} className="!m-0 !bg-zinc-100 !text-zinc-600">
               {r.policyHint}
             </Tag>
           )}
           {r.ok ? (
             <>
-              <Tag color="green">{fmtDur(r.durationSec)}</Tag>
+              <Tag>{fmtDur(r.durationSec)}</Tag>
               <Tag>{fmtDist(r.distanceM)}</Tag>
             </>
           ) : (
@@ -95,18 +95,7 @@ function RouteCard({
                   renderItem={(item) => (
                     <List.Item className="!px-0 !py-1">
                       <div>
-                        <Tag
-                          className="mr-2"
-                          color={
-                            item.title === '地铁'
-                              ? 'blue'
-                              : item.title === '公交'
-                                ? 'orange'
-                                : item.title === '步行'
-                                  ? 'default'
-                                  : 'purple'
-                          }
-                        >
+                        <Tag className="mr-2">
                           {item.title}
                         </Tag>
                         <Text>{item.detail || item.title}</Text>
@@ -212,7 +201,7 @@ export function TransportCompareModal({
         <Paragraph type="secondary" className="!mb-3">
           <Text strong>{from.name}</Text> → <Text strong>{to.name}</Text>
           {currentMode && (
-            <Tag color="blue" className="ml-2">
+            <Tag className="ml-2">
               当前：{modeLabel(currentMode)}
             </Tag>
           )}

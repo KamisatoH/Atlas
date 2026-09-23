@@ -1,64 +1,59 @@
 import type { ReactNode } from 'react';
-import { Button, Typography } from 'antd';
-import { CloseOutlined, RobotOutlined } from '@ant-design/icons';
+import { Typography } from 'antd';
+import { CalendarOutlined, CompassOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
-export type AgentAssistantEntryButtonProps = {
-  onClick: () => void;
-};
-
-/** 收起时在地图上唤出 AI 助手 */
-export function AgentAssistantEntryButton({ onClick }: AgentAssistantEntryButtonProps) {
-  return (
-    <Button
-      type="primary"
-      size="large"
-      icon={<RobotOutlined />}
-      className="agent-assistant-entry"
-      onClick={onClick}
-    >
-      <span className="agent-assistant-entry-label">AI 助手</span>
-    </Button>
-  );
-}
-
 export type AgentAssistantShellProps = {
-  open: boolean;
-  onClose: () => void;
+  mode: 'ai' | 'manual';
+  onModeChange: (mode: 'ai' | 'manual') => void;
   children: ReactNode;
 };
 
-/** AI 助手侧栏（展开态） */
-export function AgentAssistantShell({ open, onClose, children }: AgentAssistantShellProps) {
-  if (!open) return null;
-
+/**
+ * Atlas 的统一规划工作台：AI 先给出方案，自主规划用于查看、补充和细调。
+ * 两种方式共享同一份地图与行程状态，避免成为互相割裂的入口。
+ */
+export function AgentAssistantShell({ mode, onModeChange, children }: AgentAssistantShellProps) {
   return (
-    <aside className="agent-assistant-shell agent-assistant-shell--open">
+    <aside
+      className={`agent-assistant-shell agent-assistant-shell--persistent agent-assistant-shell--${mode}`}
+      data-tour="planning-workbench"
+    >
       <div className="agent-assistant-shell-bar shrink-0">
         <div className="shell-bar-title">
           <span className="shell-bar-icon shell-bar-icon--ai">
-            <RobotOutlined />
+            <CompassOutlined />
           </span>
           <div>
             <Text strong className="block text-sm text-slate-800">
-              AI 助手
-            </Text>
-            <Text type="secondary" className="block text-[11px]">
-              对话生成多日路线，自动落到地图与日历
+              规划路线
             </Text>
           </div>
         </div>
-        <Button
-          type="text"
-          size="small"
-          icon={<CloseOutlined />}
-          aria-label="收起 AI 助手"
-          className="shell-close-btn"
-          onClick={onClose}
-        >
-          收起
-        </Button>
+        <div className="planner-mode-switch" role="tablist" aria-label="规划方式">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'ai'}
+            className={`planner-mode-tab ${mode === 'ai' ? 'is-active' : ''}`}
+            onClick={() => onModeChange('ai')}
+          >
+            <CompassOutlined />
+            对话规划
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'manual'}
+            data-tour="planner-mode-manual"
+            className={`planner-mode-tab ${mode === 'manual' ? 'is-active' : ''}`}
+            onClick={() => onModeChange('manual')}
+          >
+            <CalendarOutlined />
+            自主规划
+          </button>
+        </div>
       </div>
       <div className="agent-assistant-shell-body min-h-0 flex-1 overflow-hidden">{children}</div>
     </aside>

@@ -11,7 +11,7 @@ export function describeApiError(e: unknown): string {
     return '请求失败，请稍后重试。';
   }
   if (e.code === 'ECONNABORTED') {
-    return '请求超时。若后端已启动，请检查 server/.env 中大模型 API 配置（OPENAI_BASE_URL / OPENAI_MODEL）。';
+    return '请求超时。若后端已启动，请检查 server/.env 中的规划服务配置。';
   }
   if (!e.response) {
     return '无法连接后端。请在 server 目录运行 `npm run dev`，并确认端口 3001 未被占用。';
@@ -19,7 +19,7 @@ export function describeApiError(e: unknown): string {
   if (e.response.status === 503) {
     const data = e.response.data as { error?: string; code?: string };
     if (data?.code === 'LLM_UNAVAILABLE') {
-      return data.error ?? '大模型请求失败，请稍候重试';
+      return data.error ?? '规划服务请求失败，请稍候重试';
     }
   }
   if (e.response.status === 502) {

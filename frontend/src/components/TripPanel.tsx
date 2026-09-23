@@ -61,7 +61,7 @@ export function TripPanel({
   onRemoveStop: (dayIndex: number, stopId: string) => void;
   onTransportCompare: (from: TripStop, to: TripStop) => void;
   onReorderStops: (fromIndex: number, toIndex: number) => void;
-  /** 嵌入 TripPlanningShell 时使用，去掉外层卡片样式 */
+  /** 嵌入统一规划工作台时使用，去掉外层卡片样式。 */
   embedded?: boolean;
 }) {
   return (

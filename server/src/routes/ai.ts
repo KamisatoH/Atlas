@@ -26,16 +26,20 @@ type AgentPlanStop = {
   lat?: number;
   type?: 'scenic' | 'food' | 'hotel' | 'other';
   playMinutes?: number;
+  priority?: 'must' | 'recommended' | 'optional';
   note?: string;
   openTime?: string;
   closeTime?: string;
   transportToNext?: 'walking' | 'driving' | 'transit' | 'riding';
 };
 
+type TripPace = 'relaxed' | 'balanced' | 'compact';
+
 type AgentTripPlan = {
   city?: string;
   title?: string;
   dayStart?: string;
+  pace?: TripPace;
   dayIndex?: number;
   stops: AgentPlanStop[];
   transportSummary?: string;
@@ -47,9 +51,17 @@ type AgentItineraryMeta = {
   totalDays?: number;
 };
 
+type ClarificationField = 'pace' | 'interest' | 'transport' | 'companions' | 'budget' | 'startArea' | 'accommodation' | 'arrival';
+type AgentClarification = {
+  field: ClarificationField;
+  question: string;
+  options: Array<{ value: string; label: string; description?: string; requiresDetail?: boolean; detailPlaceholder?: string }>;
+  allowSkip?: boolean;
+};
 type ChatPayload = {
   reply: string;
   source: 'openai';
+  clarification?: AgentClarification | null;
   plan?: AgentTripPlan | null;
   plans?: AgentTripPlan[] | null;
   itinerary?: AgentItineraryMeta | null;
@@ -147,7 +159,7 @@ async function chatWithOpenAI(
   let sys = buildAgentSystemPrompt(context);
   if (compact) {
     sys +=
-      '\n\n# 压缩模式\n上次输出过长被截断。请用更精简内容重新输出**完整** JSON：每日最多 3 站，note 10～15 字，仍须 plans.length === totalDays。';
+      '\n\n# 压缩模式\n上次输出过长被截断。请用更精简内容重新输出**完整** JSON：保留每一天满足时间预算所需的核心景点、餐食与住宿节点；note 10～15 字，仍须 plans.length === totalDays。';
   }
   const extraBody = llmExtraBody();
 
@@ -163,6 +175,7 @@ async function chatWithOpenAI(
   const choice = completion.choices[0];
   let parsed: {
     reply?: string;
+    clarification?: unknown;
     plan?: AgentTripPlan | null;
     plans?: AgentTripPlan[] | null;
     itinerary?: AgentItineraryMeta | null;
@@ -186,12 +199,13 @@ async function chatWithOpenAI(
     return chatWithOpenAI(messages, context, apiKey, true);
   }
 
-  return normalizeChatPayload(parsed, context?.activeDayIndex);
+  return normalizeChatPayload(parsed, context);
 }
 
 function normalizeOnePlan(
   plan: AgentTripPlan | null | undefined,
-  fallbackDayIndex?: number
+  fallbackDayIndex?: number,
+  fallbackPace?: TripPace
 ): AgentTripPlan | null {
   if (!plan || !Array.isArray(plan.stops) || plan.stops.length === 0) return null;
   const validModes = new Set(['walking', 'driving', 'transit', 'riding']);
@@ -203,6 +217,7 @@ function normalizeOnePlan(
       lat: typeof s.lat === 'number' ? s.lat : undefined,
       type: s.type ?? 'scenic',
       playMinutes: Math.min(Math.max(s.playMinutes ?? 90, 15), 360),
+      priority: (s.priority === 'must' || s.priority === 'optional' ? s.priority : 'recommended') as AgentPlanStop['priority'],
       note: s.note?.trim() || undefined,
       openTime: s.openTime?.trim() || undefined,
       closeTime: s.closeTime?.trim() || undefined,
@@ -218,10 +233,20 @@ function normalizeOnePlan(
     city: plan.city,
     title: plan.title,
     dayStart: plan.dayStart ?? '09:00',
+    pace: normalizePace(plan.pace) ?? fallbackPace ?? 'balanced',
     dayIndex: plan.dayIndex ?? fallbackDayIndex,
     transportSummary: plan.transportSummary,
     stops,
   };
+}
+
+function normalizePace(value: unknown): TripPace | undefined {
+  return value === 'relaxed' || value === 'balanced' || value === 'compact' ? value : undefined;
+}
+
+function paceFromContext(context: AgentChatContext | undefined): TripPace | undefined {
+  const answer = context?.clarificationAnswers?.pace?.split('：')[0]?.trim();
+  return normalizePace(answer);
 }
 
 function mergeMultiDayPlans(
@@ -230,16 +255,17 @@ function mergeMultiDayPlans(
     plans?: AgentTripPlan[] | null;
     itinerary?: AgentItineraryMeta | null;
   },
-  activeDayIndex?: number
+  activeDayIndex?: number,
+  fallbackPace?: TripPace
 ): AgentTripPlan[] {
   const fromArray = Array.isArray(parsed.plans)
     ? parsed.plans
-        .map((p, i) => normalizeOnePlan(p, p.dayIndex ?? i))
+        .map((p, i) => normalizeOnePlan(p, p.dayIndex ?? i, fallbackPace))
         .filter((p): p is AgentTripPlan => p != null)
     : [];
 
   const expectedDays = parsed.itinerary?.totalDays;
-  const extra = normalizeOnePlan(parsed.plan, fromArray.length);
+  const extra = normalizeOnePlan(parsed.plan, fromArray.length, fallbackPace);
 
   // 模型常把最后一天误放进 plan，或 plans 被截断少一项
   if (extra && fromArray.length >= 2) {
@@ -255,17 +281,52 @@ function mergeMultiDayPlans(
   return fromArray.map((p, i) => ({ ...p, dayIndex: i }));
 }
 
+function normalizeClarification(raw: unknown, context: AgentChatContext | undefined): AgentClarification | null {
+  if (context?.replan || context?.skipClarification || (context?.clarificationCount ?? 0) >= 3 || !raw || typeof raw !== 'object') return null;
+  const item = raw as { field?: unknown; question?: unknown; options?: unknown; allowSkip?: unknown };
+  const fields = new Set<ClarificationField>(['pace', 'interest', 'transport', 'companions', 'budget', 'startArea', 'accommodation', 'arrival']);
+  const field = String(item.field ?? '') as ClarificationField;
+  if (!fields.has(field) || context?.clarificationAnswers?.[field]) return null;
+  const question = String(item.question ?? '').trim();
+  if (!question || question.length > 80 || !Array.isArray(item.options)) return null;
+  const options = item.options
+    .map((option) => {
+      const value = String(option?.value ?? '').trim();
+      const label = String(option?.label ?? '').trim();
+      const description = String(option?.description ?? '').trim();
+      const requiresDetail = option?.requiresDetail === true;
+      const detailPlaceholder = String(option?.detailPlaceholder ?? '').trim();
+      if (!value || !label || value.length > 40 || label.length > 24) return null;
+      return {
+        value,
+        label,
+        ...(description ? { description: description.slice(0, 48) } : {}),
+        ...(requiresDetail ? { requiresDetail: true } : {}),
+        ...(requiresDetail && detailPlaceholder ? { detailPlaceholder: detailPlaceholder.slice(0, 60) } : {}),
+      };
+    })
+    .filter((option): option is AgentClarification['options'][number] => option != null);
+  if (options.length < 2 || options.length > 4 || new Set(options.map((option) => option.value)).size !== options.length) return null;
+  return { field, question, options, allowSkip: item.allowSkip !== false };
+}
 function normalizeChatPayload(
   parsed: {
     reply?: string;
+    clarification?: unknown;
     plan?: AgentTripPlan | null;
     plans?: AgentTripPlan[] | null;
     itinerary?: AgentItineraryMeta | null;
   },
-  activeDayIndex?: number
+  context: AgentChatContext | undefined
 ): ChatPayload {
-  const mergedMulti = mergeMultiDayPlans(parsed, activeDayIndex);
-  const single = normalizeOnePlan(parsed.plan, activeDayIndex);
+  const clarification = normalizeClarification(parsed.clarification, context);
+  if (clarification) {
+    return { reply: String(parsed.reply ?? '先确认一个偏好。'), source: 'openai', clarification, plan: null, plans: null, itinerary: null };
+  }
+  const activeDayIndex = context?.activeDayIndex;
+  const fallbackPace = paceFromContext(context);
+  const mergedMulti = mergeMultiDayPlans(parsed, activeDayIndex, fallbackPace);
+  const single = normalizeOnePlan(parsed.plan, activeDayIndex, fallbackPace);
 
   if (mergedMulti.length > 1) {
     const expectedDays = parsed.itinerary?.totalDays ?? mergedMulti.length;

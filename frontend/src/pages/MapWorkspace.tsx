@@ -11,12 +11,9 @@ import {
   message,
 } from 'antd';
 import {
-  CalendarOutlined,
-  CloudUploadOutlined,
   ExportOutlined,
   LoginOutlined,
   QuestionCircleOutlined,
-  RobotOutlined,
   SaveOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
@@ -27,10 +24,9 @@ import { ExportItinerarySheet } from '@/components/ExportItinerarySheet';
 import { SearchExplorePanel } from '@/components/SearchExplorePanel';
 import { TransportCompareModal } from '@/components/TransportCompareModal';
 import { FreeAgentPanel } from '@/components/FreeAgentPanel';
-import type { ResolvedAgentStop } from '@/lib/agentApply';
+import { resolveStopsForAgentPlan, type ResolvedAgentStop } from '@/lib/agentApply';
 import { TripPanel } from '@/components/TripPanel';
-import { AgentAssistantEntryButton, AgentAssistantShell } from '@/components/AgentAssistantShell';
-import { TripPlanningEntryButton, TripPlanningShell } from '@/components/TripPlanningShell';
+import { AgentAssistantShell } from '@/components/AgentAssistantShell';
 import { OnboardingTour } from '@/components/OnboardingTour';
 import { ONBOARDING_STEPS } from '@/config/onboardingSteps';
 import { isOnboardingCompleted, markOnboardingCompleted } from '@/lib/onboardingStorage';
@@ -38,7 +34,7 @@ import { http } from '@/api/http';
 import { exportElementToPdf, exportElementToPng } from '@/lib/exportPdf';
 import { normalizeCityLabel } from '@/lib/cityLabel';
 import { planDayLabel } from '@/lib/planDate';
-import { prepareAgentDayEntry, prepareAllAgentDayEntries } from '@/lib/agentApply';
+import { buildReplanContext, prepareAgentDayEntry, prepareAllAgentDayEntries, type AgentApplyOutcome } from '@/lib/agentApply';
 import { useAuthStore, loginRequest, registerRequest } from '@/store/authStore';
 import { recomputeTimes, useTripStore } from '@/store/tripStore';
 import type { AgentTripPlan } from '@/types/agentChat';
@@ -105,10 +101,16 @@ export function MapWorkspace() {
   const [selectedPoiType, setSelectedPoiType] = useState<PoiType>('scenic');
   const [searchCity, setSearchCity] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [tripPanelOpen, setTripPanelOpen] = useState(false);
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [plannerMode, setPlannerMode] = useState<'ai' | 'manual'>('ai');
   const [tourOpen, setTourOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const generationRequestRef = useRef(0);
+  const generationDismissTimerRef = useRef<number | null>(null);
+  const [routeGeneration, setRouteGeneration] = useState<{
+    phase: 'idle' | 'thinking' | 'resolving' | 'drawing';
+    stops: TripStop[];
+    shownStops: number;
+  }>({ phase: 'idle', stops: [], shownStops: 0 });
 
   useEffect(() => {
     restore();
@@ -117,8 +119,6 @@ export function MapWorkspace() {
   useEffect(() => {
     if (isOnboardingCompleted()) return;
     const timer = window.setTimeout(() => {
-      setAgentPanelOpen(false);
-      setTripPanelOpen(false);
       setTourOpen(true);
     }, 700);
     return () => window.clearTimeout(timer);
@@ -130,8 +130,6 @@ export function MapWorkspace() {
   }, []);
 
   const replayTour = useCallback(() => {
-    setAgentPanelOpen(false);
-    setTripPanelOpen(false);
     setTourOpen(true);
   }, []);
 
@@ -153,16 +151,6 @@ export function MapWorkspace() {
   const displayStops = computed.day?.stops ?? stops;
   const warnings = computed.warnings;
 
-  const tripPanelSummary = useMemo(() => {
-    const totalStops = days.reduce((n, d) => n + d.stops.length, 0);
-    if (totalStops === 0) return undefined;
-    const dayLabel = day?.title ?? `第 ${activeDayIndex + 1} 天`;
-    if (days.length > 1) {
-      return `${totalStops} 站 · ${dayLabel}`;
-    }
-    return `${displayStops.length} 站`;
-  }, [days, day?.title, activeDayIndex, displayStops.length]);
-
   const workspaceMetrics = useMemo(() => {
     const totalStops = days.reduce((n, d) => n + d.stops.length, 0);
     const filledDays = days.filter((d) => d.stops.length > 0).length;
@@ -181,12 +169,101 @@ export function MapWorkspace() {
     };
   }, [activeDayIndex, days, displayStops, planStartDate]);
 
+  const routeGenerationDetail = useMemo(() => {
+    if (routeGeneration.phase !== 'drawing' || routeGeneration.shownStops === 0) return null;
+    const currentIndex = Math.min(routeGeneration.shownStops - 1, routeGeneration.stops.length - 1);
+    const current = routeGeneration.stops[currentIndex];
+    if (!current) return null;
+    if (currentIndex === 0) return `起点：${current.name}`;
+    const previous = routeGeneration.stops[currentIndex - 1];
+    return previous ? `${previous.name} → ${current.name}` : current.name;
+  }, [routeGeneration]);
+
   const onSegmentMinutes = useCallback(
     (fromStopId: string, minutes: number) => {
       setTravelMinutes(activeDayIndex, fromStopId, minutes);
     },
     [activeDayIndex, setTravelMinutes]
   );
+
+  const clearRouteGeneration = useCallback(() => {
+    generationRequestRef.current += 1;
+    if (generationDismissTimerRef.current != null) {
+      window.clearTimeout(generationDismissTimerRef.current);
+      generationDismissTimerRef.current = null;
+    }
+    setRouteGeneration({ phase: 'idle', stops: [], shownStops: 0 });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (generationDismissTimerRef.current != null) {
+        window.clearTimeout(generationDismissTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleGenerationStart = useCallback(() => {
+    generationRequestRef.current += 1;
+    if (generationDismissTimerRef.current != null) {
+      window.clearTimeout(generationDismissTimerRef.current);
+      generationDismissTimerRef.current = null;
+    }
+    setRouteGeneration({ phase: 'thinking', stops: [], shownStops: 0 });
+  }, []);
+
+  const handlePlanGenerated = useCallback(
+    (plans: AgentTripPlan[]) => {
+      const requestId = generationRequestRef.current;
+      const plan = plans.find((item) => item.dayIndex === activeDayIndex) ?? plans[0];
+      if (!plan?.stops.length) {
+        clearRouteGeneration();
+        return;
+      }
+
+      setRouteGeneration({ phase: 'resolving', stops: [], shownStops: 0 });
+      void resolveStopsForAgentPlan(plan, searchCity)
+        .then((resolved) => {
+          if (requestId !== generationRequestRef.current) return;
+          const previewStops: TripStop[] = resolved.map((stop, index) => ({
+            id: `generation-${requestId}-${index}`,
+            name: stop.name,
+            lng: stop.lng,
+            lat: stop.lat,
+            type: stop.type,
+            playMinutes: stop.playMinutes,
+            transportToNext: stop.transportToNext,
+          }));
+          if (!previewStops.length) {
+            clearRouteGeneration();
+            return;
+          }
+          setRouteGeneration({ phase: 'drawing', stops: previewStops, shownStops: 0 });
+        })
+        .catch((error) => {
+          console.warn('Route generation preview failed:', error);
+          if (requestId === generationRequestRef.current) clearRouteGeneration();
+        });
+    },
+    [activeDayIndex, clearRouteGeneration, searchCity]
+  );
+
+  const handleGenerationProgress = useCallback((shownStops: number, totalStops: number) => {
+    setRouteGeneration((current) => {
+      if (current.phase !== 'drawing' || current.stops.length !== totalStops) return current;
+      return { ...current, shownStops };
+    });
+  }, []);
+
+  const handleGenerationComplete = useCallback(() => {
+    if (generationDismissTimerRef.current != null) {
+      window.clearTimeout(generationDismissTimerRef.current);
+    }
+    generationDismissTimerRef.current = window.setTimeout(() => {
+      setRouteGeneration({ phase: 'idle', stops: [], shownStops: 0 });
+      generationDismissTimerRef.current = null;
+    }, 2200);
+  }, []);
 
   const handleSelectPoi = useCallback(
     (p: PoiHit) => {
@@ -271,7 +348,7 @@ export function MapWorkspace() {
       return;
     }
     handleAddPoi(selectedPoi, selectedPoiType);
-    setTripPanelOpen(true);
+    setPlannerMode('manual');
   };
 
   const handleNearbyPoiAdd = useCallback(
@@ -294,16 +371,22 @@ export function MapWorkspace() {
       plan: AgentTripPlan,
       resolved: ResolvedAgentStop[],
       targetDayIndex: number,
-      options?: { silent?: boolean }
-    ) => {
+      options?: { silent?: boolean; replanAttempt?: number }
+    ): Promise<AgentApplyOutcome> => {
       const dateLabel = planDayLabel(planStartDate, targetDayIndex, 'long');
       const dayTitle =
         plan.title ??
         (dateLabel ? `${dateLabel} 行程` : days[targetDayIndex]?.title ?? `第 ${targetDayIndex + 1} 天`);
 
       const entry = await prepareAgentDayEntry(plan, resolved, targetDayIndex, dayTitle);
+      if (!entry.schedule.feasible) {
+        return {
+          status: 'needs-replan',
+          replan: buildReplanContext([entry], (options?.replanAttempt ?? 0) + 1),
+        };
+      }
       replaceDayStops(entry.dayIndex, entry.stops, entry.dayPatch);
-      setTripPanelOpen(true);
+      setPlannerMode('manual');
 
       const city = normalizeCityLabel(plan.city);
       if (city) setSearchCity(city);
@@ -312,28 +395,44 @@ export function MapWorkspace() {
         const totalTravel = entry.stops
           .slice(0, -1)
           .reduce((sum, s) => sum + (s.travelMinutesToNext ?? 0), 0);
-        message.success(
-          `已应用到${dateLabel ?? `第 ${targetDayIndex + 1} 天`}：${entry.stopCount} 站，路段合计约 ${totalTravel} 分钟`
+        const scheduleText = entry.schedule.feasible
+          ? `时间已校验，预计 ${entry.schedule.endTime} 结束`
+          : `仍有 ${entry.schedule.issues.filter((issue) => issue.severity === 'error').length} 项时间冲突，请在站点详情中调整`;
+        const repairText = entry.repairs.length ? `；${entry.repairs.map((repair) => repair.detail).join('；')}` : '';
+        const notify = entry.schedule.feasible ? message.success : message.warning;
+        notify(
+          `已应用到${dateLabel ?? `第 ${targetDayIndex + 1} 天`}：${entry.stopCount} 站，路段合计约 ${totalTravel} 分钟；${scheduleText}${repairText}`
         );
       }
 
-      return entry;
+      return { status: 'applied' };
     },
     [days, planStartDate, replaceDayStops]
   );
 
   const handleApplyAgentPlan = useCallback(
-    async (plan: AgentTripPlan, resolved: ResolvedAgentStop[], targetDayIndex: number) => {
-      await applyOneAgentDay(plan, resolved, targetDayIndex);
-      if (targetDayIndex !== activeDayIndex) {
+    async (
+      plan: AgentTripPlan,
+      resolved: ResolvedAgentStop[],
+      targetDayIndex: number,
+      replanAttempt = 0
+    ): Promise<AgentApplyOutcome> => {
+      clearRouteGeneration();
+      const outcome = await applyOneAgentDay(plan, resolved, targetDayIndex, { replanAttempt });
+      if (outcome.status === 'applied' && targetDayIndex !== activeDayIndex) {
         setActiveDay(targetDayIndex);
       }
+      return outcome;
     },
-    [activeDayIndex, applyOneAgentDay, setActiveDay]
+    [activeDayIndex, applyOneAgentDay, clearRouteGeneration, setActiveDay]
   );
 
   const handleApplyAgentPlans = useCallback(
-    async (items: Array<{ plan: AgentTripPlan; resolved: ResolvedAgentStop[] }>) => {
+    async (
+      items: Array<{ plan: AgentTripPlan; resolved: ResolvedAgentStop[] }>,
+      replanAttempt = 0
+    ): Promise<AgentApplyOutcome> => {
+      clearRouteGeneration();
       const getDayTitle = (plan: AgentTripPlan, dayIndex: number) => {
         const dateLabel = planDayLabel(planStartDate, dayIndex, 'long');
         return (
@@ -346,7 +445,15 @@ export function MapWorkspace() {
 
       if (!entries.length) {
         message.error('没有可应用的站点');
-        return;
+        return { status: 'applied' };
+      }
+
+      const conflicting = entries.filter((entry) => !entry.schedule.feasible);
+      if (conflicting.length) {
+        return {
+          status: 'needs-replan',
+          replan: buildReplanContext(entries, replanAttempt + 1),
+        };
       }
 
       const city = items.map((x) => normalizeCityLabel(x.plan.city)).find(Boolean);
@@ -354,21 +461,26 @@ export function MapWorkspace() {
 
       replaceMultipleDayStops(entries);
       setActiveDay(entries[0]?.dayIndex ?? 0);
-      setTripPanelOpen(true);
+      setPlannerMode('manual');
 
       const totalStops = entries.reduce((n, e) => n + e.stopCount, 0);
       const missed = items.length - entries.length;
 
-      if (failedDayLabels.length || missed > 0) {
+      const timingConflicts = entries.filter((entry) => !entry.schedule.feasible);
+      const repairCount = entries.reduce((count, entry) => count + entry.repairs.length, 0);
+      if (failedDayLabels.length || missed > 0 || timingConflicts.length) {
         const parts: string[] = [];
         if (failedDayLabels.length) parts.push(`第 ${failedDayLabels.join('、')} 天路线计算失败`);
         if (missed > 0) parts.push(`${missed} 天未写入`);
+        if (timingConflicts.length) parts.push(`第 ${timingConflicts.map((entry) => entry.dayIndex + 1).join('、')} 天仍有时间冲突`);
+        if (repairCount) parts.push(`已自动调整 ${repairCount} 处`);
         message.warning(`已应用 ${entries.length} 日（${totalStops} 站）；${parts.join('；')}`);
       } else {
-        message.success(`已应用 ${entries.length} 日连续行程，共 ${totalStops} 个站点`);
+        message.success(`已应用 ${entries.length} 日连续行程，共 ${totalStops} 个站点；时间已校验${repairCount ? `，已自动调整 ${repairCount} 处` : ''}`);
       }
+      return { status: 'applied' };
     },
-    [days, planStartDate, replaceMultipleDayStops, setActiveDay]
+    [clearRouteGeneration, days, planStartDate, replaceMultipleDayStops, setActiveDay]
   );
 
   const handleClearDayStops = useCallback(() => {
@@ -447,35 +559,9 @@ export function MapWorkspace() {
             <span className="brand-logo" aria-hidden>
               A
             </span>
-            <div>
-              <Text strong className="brand-title block text-[15px] leading-tight tracking-tight">
-                Atlas
-              </Text>
-              <Text className="brand-tagline block text-[11px] leading-none">
-                地图 · AI 助手 · 行程
-              </Text>
-            </div>
-          </div>
-
-          <div className="header-nav-pills flex flex-wrap items-center gap-1.5">
-            <Button
-              type={agentPanelOpen ? 'primary' : 'default'}
-              icon={<RobotOutlined />}
-              className={`header-nav-btn header-nav-btn--ai ${agentPanelOpen ? 'is-active' : ''}`}
-              data-tour="ai-assistant"
-              onClick={() => setAgentPanelOpen((v) => !v)}
-            >
-              <span className="header-nav-btn-label">{agentPanelOpen ? '收起助手' : 'AI 助手'}</span>
-            </Button>
-            <Button
-              type={tripPanelOpen ? 'primary' : 'default'}
-              icon={<CalendarOutlined />}
-              className={`header-nav-btn header-nav-btn--trip ${tripPanelOpen ? 'is-active' : ''}`}
-              data-tour="trip-planning"
-              onClick={() => setTripPanelOpen((v) => !v)}
-            >
-              <span className="header-nav-btn-label">{tripPanelOpen ? '收起规划' : '行程规划'}</span>
-            </Button>
+            <Text strong className="brand-title block text-[15px] leading-tight tracking-tight">
+              Atlas
+            </Text>
           </div>
 
           <div className="header-actions ml-auto flex shrink-0 flex-wrap items-center gap-2">
@@ -521,47 +607,19 @@ export function MapWorkspace() {
           />
         )}
 
-        <section className="workspace-hero mb-3 shrink-0">
-          <div className="workspace-hero-copy">
-            <span className="workspace-hero-kicker">Atlas Workspace</span>
-            <h1 className="workspace-hero-title">
-              用地图组织灵感，用 AI 把旅行变成可以落地的日程。
-            </h1>
-            <p className="workspace-hero-subtitle">
-              先搜地点、再让助手生成路线，最后把交通、停留时长和每天节奏调成你真正想走的版本。
-            </p>
-          </div>
-          <div className="workspace-hero-metrics">
-            <div className="workspace-metric-card">
-              <span className="workspace-metric-label">当前规划日</span>
-              <strong>{workspaceMetrics.currentDateLabel ?? day?.title ?? `第 ${activeDayIndex + 1} 天`}</strong>
-              <span>{workspaceMetrics.currentStops > 0 ? `${workspaceMetrics.currentStops} 个站点已排入` : '还没有加入站点'}</span>
-            </div>
-            <div className="workspace-metric-card">
-              <span className="workspace-metric-label">旅程进度</span>
-              <strong>{workspaceMetrics.filledDays} / {days.length} 天已成型</strong>
-              <span>{workspaceMetrics.totalStops > 0 ? `累计 ${workspaceMetrics.totalStops} 个地点` : '从搜索、地图双击或 AI 助手开始'}</span>
-            </div>
-            <div className="workspace-metric-card">
-              <span className="workspace-metric-label">今日节奏</span>
-              <strong>{workspaceMetrics.totalTravelMinutes > 0 ? `在途约 ${workspaceMetrics.totalTravelMinutes} 分钟` : '等待路线生成'}</strong>
-              <span>{warnings.length > 0 ? `有 ${warnings.length} 条时间提醒待处理` : '路线顺序与时间将自动联动更新'}</span>
-            </div>
-          </div>
+        <section className="workspace-summary mb-2 shrink-0" aria-label="行程概览">
+          <strong>
+            {workspaceMetrics.currentDateLabel ?? day?.title ?? `第 ${activeDayIndex + 1} 天`}
+          </strong>
+          <span>{workspaceMetrics.filledDays} / {days.length} 天</span>
+          <span>{workspaceMetrics.totalStops} 个地点</span>
+          {workspaceMetrics.totalTravelMinutes > 0 && (
+            <span>今日在途约 {workspaceMetrics.totalTravelMinutes} 分钟</span>
+          )}
+          {warnings.length > 0 && <span className="workspace-summary-warning">{warnings.length} 条时间提醒</span>}
         </section>
 
         <div className="workspace-main flex min-h-0 min-w-0 flex-1 gap-3">
-          {(agentPanelOpen || tripPanelOpen) && (
-            <button
-              type="button"
-              className="mobile-panel-scrim"
-              aria-label="关闭当前面板"
-              onClick={() => {
-                setAgentPanelOpen(false);
-                setTripPanelOpen(false);
-              }}
-            />
-          )}
           <div className="map-shell relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <div className="absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)]" data-tour="map-explore">
               <SearchExplorePanel
@@ -577,70 +635,91 @@ export function MapWorkspace() {
                 stops={stops}
                 dayIndex={activeDayIndex}
                 onSegmentMinutes={onSegmentMinutes}
+                generationStops={routeGeneration.stops}
+                generationActive={routeGeneration.phase === 'drawing'}
+                onGenerationProgress={handleGenerationProgress}
+                onGenerationComplete={handleGenerationComplete}
                 highlightPoi={selectedPoi}
                 onMapSelect={handleSelectPoi}
                 onNearbyPoiAdd={handleNearbyPoiAdd}
               />
             </div>
-            <div className="map-panel-entries" data-tour="map-entries">
-              {!agentPanelOpen && (
-                <AgentAssistantEntryButton onClick={() => setAgentPanelOpen(true)} />
-              )}
-              {!tripPanelOpen && (
-                <TripPlanningEntryButton
-                  summary={tripPanelSummary}
-                  onClick={() => setTripPanelOpen(true)}
-                />
-              )}
-            </div>
-            <div className="map-footer-hint shrink-0">
-              {agentPanelOpen || tripPanelOpen
-                ? '路线显示于地图 · 侧栏可对话或编辑行程 · 地图数据 © 高德'
-                : '顶栏可打开 AI 助手与行程规划 · 单击地图探索周边 · 地图数据 © 高德'}
-            </div>
+            {routeGeneration.phase !== 'idle' && (
+              <div className="route-generation-overlay" aria-live="polite">
+                <span className="route-generation-glyph" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <div className="route-generation-copy">
+                  <strong>
+                    {routeGeneration.phase === 'thinking'
+                      ? '正在生成路线'
+                      : routeGeneration.phase === 'resolving'
+                        ? '正在定位地点'
+                        : '正在绘制路线'}
+                  </strong>
+                  <span>
+                    {routeGeneration.phase === 'thinking'
+                      ? '整理目的地与途经顺序'
+                      : routeGeneration.phase === 'resolving'
+                        ? '确认地图上的地点位置'
+                        : routeGenerationDetail ??
+                          `${routeGeneration.shownStops} / ${routeGeneration.stops.length} 个地点已编排`}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="map-footer-hint shrink-0">地图数据 © 高德</div>
           </div>
 
-          <AgentAssistantShell open={agentPanelOpen} onClose={() => setAgentPanelOpen(false)}>
-            <FreeAgentPanel
-              planStartDate={planStartDate}
-              day={day}
-              days={days}
-              activeDayIndex={activeDayIndex}
-              displayStops={displayStops}
-              searchCity={searchCity}
-              onApplyPlan={handleApplyAgentPlan}
-              onApplyPlans={handleApplyAgentPlans}
-              onSetPlanStartDate={setPlanStartDate}
-              onSetActiveDay={setActiveDay}
-              onAddDay={addDay}
-              onClearTrip={handleClearDayStops}
-              embedded
-            />
+          <AgentAssistantShell
+            mode={plannerMode}
+            onModeChange={setPlannerMode}
+          >
+            {plannerMode === 'ai' ? (
+              <FreeAgentPanel
+                planStartDate={planStartDate}
+                day={day}
+                days={days}
+                activeDayIndex={activeDayIndex}
+                displayStops={displayStops}
+                searchCity={searchCity}
+                onApplyPlan={handleApplyAgentPlan}
+                onApplyPlans={handleApplyAgentPlans}
+                onSetPlanStartDate={setPlanStartDate}
+                onSetActiveDay={setActiveDay}
+                onAddDay={addDay}
+                onClearTrip={handleClearDayStops}
+                onGenerationStart={handleGenerationStart}
+                onPlanGenerated={handlePlanGenerated}
+                onGenerationFailed={clearRouteGeneration}
+                embedded
+              />
+            ) : (
+              <TripPanel
+                planStartDate={planStartDate}
+                days={days}
+                activeDayIndex={activeDayIndex}
+                day={day}
+                displayStops={displayStops}
+                warnings={warnings}
+                selectedPoi={selectedPoi}
+                selectedPoiType={selectedPoiType}
+                onPoiTypeChange={setSelectedPoiType}
+                onAddToTrip={handleAddToTrip}
+                onSetPlanStartDate={setPlanStartDate}
+                onSetActiveDay={setActiveDay}
+                onAddDay={addDay}
+                onUpdateDay={updateDay}
+                onUpdateStop={updateStop}
+                onRemoveStop={removeStop}
+                onTransportCompare={(from, to) => setTransportPair({ from, to })}
+                onReorderStops={handleReorderStops}
+                embedded
+              />
+            )}
           </AgentAssistantShell>
-
-          <TripPlanningShell open={tripPanelOpen} onClose={() => setTripPanelOpen(false)}>
-            <TripPanel
-              planStartDate={planStartDate}
-              days={days}
-              activeDayIndex={activeDayIndex}
-              day={day}
-              displayStops={displayStops}
-              warnings={warnings}
-              selectedPoi={selectedPoi}
-              selectedPoiType={selectedPoiType}
-              onPoiTypeChange={setSelectedPoiType}
-              onAddToTrip={handleAddToTrip}
-              onSetPlanStartDate={setPlanStartDate}
-              onSetActiveDay={setActiveDay}
-              onAddDay={addDay}
-              onUpdateDay={updateDay}
-              onUpdateStop={updateStop}
-              onRemoveStop={removeStop}
-              onTransportCompare={(from, to) => setTransportPair({ from, to })}
-              onReorderStops={handleReorderStops}
-              embedded
-            />
-          </TripPlanningShell>
         </div>
 
         <div className="workspace-toolbar mt-2 flex shrink-0 flex-wrap items-center gap-1 px-3 py-2" data-tour="toolbar">
@@ -657,9 +736,6 @@ export function MapWorkspace() {
             </Button>
             <Button type="text" size="small" onClick={exportLongImage}>
               长图
-            </Button>
-            <Button type="text" size="small" icon={<CloudUploadOutlined />} disabled>
-              同步高德
             </Button>
           </div>
           {token && (

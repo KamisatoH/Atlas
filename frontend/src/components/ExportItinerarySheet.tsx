@@ -50,7 +50,7 @@ export const ExportItinerarySheet = forwardRef<HTMLDivElement, TripState>(
           fontFamily: 'system-ui, -apple-system, "Microsoft YaHei", sans-serif',
         }}
       >
-        <div style={{ borderBottom: '2px solid #34d399', paddingBottom: 12, marginBottom: 20 }}>
+        <div style={{ borderBottom: '2px solid #18181b', paddingBottom: 12, marginBottom: 20 }}>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#1e293b' }}>
             Atlas 行程单
           </h1>

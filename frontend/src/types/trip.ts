@@ -2,6 +2,12 @@ export type PoiType = 'scenic' | 'food' | 'hotel' | 'other';
 
 export type TransportMode = 'walking' | 'driving' | 'transit' | 'riding';
 
+/** 供确定性修复使用：仅 optional 站点可被自动移除。 */
+export type StopPriority = 'must' | 'recommended' | 'optional';
+
+/** 一天的体力与留白密度；由 AI 的节奏选择卡或生成结果写入。 */
+export type TripPace = 'relaxed' | 'balanced' | 'compact';
+
 export interface TripStop {
   id: string;
   name: string;
@@ -12,6 +18,7 @@ export interface TripStop {
   departTime?: string;
   /** 游玩时长（分钟） */
   playMinutes: number;
+  priority?: StopPriority;
   arriveTime?: string;
   leaveTime?: string;
   transportToNext?: TransportMode;
@@ -27,6 +34,8 @@ export interface DayPlan {
   title: string;
   /** 当日起点出发时间 */
   dayStart: string;
+  /** 用于时间块校验：轻松/均衡行程会保留正常用餐与休整。 */
+  pace?: TripPace;
   stops: TripStop[];
 }
 

@@ -13,7 +13,7 @@ import {
 } from 'antd';
 import {
   ClearOutlined,
-  RobotOutlined,
+  CompassOutlined,
   SendOutlined,
   EnvironmentOutlined,
   PlusOutlined,
@@ -23,12 +23,25 @@ import { probeAgentAvailability, sendAgentChat, type LlmConnectionStatus } from 
 import { describeApiError } from '@/api/http';
 import { mergePlansForApply } from '@/lib/normalizeAgentPlans';
 import { confirmOverwriteExistingDays } from '@/lib/confirmTripOverwrite';
-import { resolveStopsForAgentPlan, type ResolvedAgentStop } from '@/lib/agentApply';
+import { resolveStopsForAgentPlan, type AgentApplyOutcome, type ResolvedAgentStop } from '@/lib/agentApply';
 import { planDayLabel } from '@/lib/planDate';
 import { TRANSPORT_LABELS, transportIcon } from '@/lib/transportLabels';
 import { PoiTypeTag } from '@/components/PoiTypeTag';
-import type { AgentItineraryMeta, AgentTripPlan, ChatMessage } from '@/types/agentChat';
+import type {
+  AgentClarification,
+  AgentClarificationAnswers,
+  AgentReplanContext,
+  AgentItineraryMeta,
+  AgentTripPlan,
+  ChatMessage,
+} from '@/types/agentChat';
 import type { DayPlan, PoiType, TransportMode, TripStop } from '@/types/trip';
+
+const PACE_LABEL: Record<NonNullable<AgentTripPlan['pace']>, string> = {
+  relaxed: '轻松节奏',
+  balanced: '均衡节奏',
+  compact: '紧凑节奏',
+};
 
 export type { ResolvedAgentStop } from '@/lib/agentApply';
 
@@ -43,8 +56,19 @@ const WELCOME: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    '你好，我是 **Atlas 旅行助手**。请告诉我：**城市**、**玩几天**、**偏好**（如低预算/亲子/美食），我会为你规划单日或多日行程。',
+    '告诉我**城市**、**天数**和**偏好**（如低预算、亲子或美食），即可生成单日或多日路线。',
   createdAt: Date.now(),
+};
+
+const CLARIFICATION_LABELS: Record<AgentClarification['field'], string> = {
+  pace: '行程节奏',
+  interest: '游玩偏好',
+  transport: '出行方式',
+  companions: '同行情况',
+  budget: '预算倾向',
+  startArea: '出发区域',
+  accommodation: '住宿安排',
+  arrival: '抵达安排',
 };
 
 function PlanCard({
@@ -59,13 +83,13 @@ function PlanCard({
   onApply: () => void;
 }) {
   return (
-    <div className="agent-plan-card mt-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+    <div className="agent-plan-card mt-2 rounded-xl border border-zinc-200 bg-white p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Text strong className="text-sm text-emerald-800">
+        <Text strong className="text-sm text-zinc-900">
           {plan.title ?? '推荐路线'}
         </Text>
         {plan.city && (
-          <Tag bordered={false} className="!m-0 !bg-white/80 !text-emerald-700">
+          <Tag bordered={false} className="!m-0 !bg-zinc-100 !text-zinc-700">
             {plan.city}
           </Tag>
         )}
@@ -73,6 +97,11 @@ function PlanCard({
           <Text type="secondary" className="text-xs">
             出发 {plan.dayStart}
           </Text>
+        )}
+        {plan.pace && (
+          <Tag bordered={false} className="!m-0 !bg-zinc-100 !text-zinc-700">
+            {PACE_LABEL[plan.pace]}
+          </Tag>
         )}
       </div>
       {plan.transportSummary && (
@@ -98,7 +127,7 @@ function PlanCard({
               </Text>
             )}
             {i < plan.stops.length - 1 && s.transportToNext && (
-              <div className="ml-4 mt-0.5 text-xs text-violet-600">
+              <div className="ml-4 mt-0.5 text-xs text-zinc-600">
                 {transportIcon(s.transportToNext)}{' '}
                 {TRANSPORT_LABELS[s.transportToNext as TransportMode]} → 下一站
               </div>
@@ -115,7 +144,7 @@ function PlanCard({
         icon={<EnvironmentOutlined />}
         loading={applying}
         onClick={onApply}
-        className="!bg-emerald-500 !border-emerald-500"
+        className="agent-apply-btn"
       >
         {applyLabel}
       </Button>
@@ -137,9 +166,9 @@ function MultiItineraryCard({
   onApplyAll: () => void;
 }) {
   return (
-    <div className="agent-multi-plan mt-2 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
+    <div className="agent-multi-plan mt-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Text strong className="text-sm text-violet-900">
+        <Text strong className="text-sm text-zinc-900">
           {itinerary?.title ?? `${plans.length} 日连续行程`}
         </Text>
         {itinerary?.city && (
@@ -147,7 +176,7 @@ function MultiItineraryCard({
             {itinerary.city}
           </Tag>
         )}
-        <Tag bordered={false} color="purple" className="!m-0">
+        <Tag bordered={false} className="!m-0 !bg-zinc-200 !text-zinc-700">
           共 {plans.length} 天
           {itinerary?.totalDays != null && itinerary.totalDays > plans.length
             ? ` / ${itinerary.totalDays} 天（不完整）`
@@ -156,7 +185,7 @@ function MultiItineraryCard({
       </div>
       {itinerary?.totalDays != null && itinerary.totalDays > plans.length && (
         <Text type="warning" className="mb-2 block text-xs">
-          数据缺少第 {plans.length + 1}～{itinerary.totalDays} 天，应用前请让助手补全
+          数据缺少第 {plans.length + 1}～{itinerary.totalDays} 天，请先补全再应用
         </Text>
       )}
       <div className="mb-3 space-y-2">
@@ -167,7 +196,7 @@ function MultiItineraryCard({
               key={p.dayIndex ?? p.title}
               className="rounded-lg border border-white/80 bg-white/70 px-2.5 py-1.5 text-xs text-slate-700"
             >
-              <Text strong className="text-violet-800">
+              <Text strong className="text-zinc-800">
                 {dateLabel ? `${dateLabel} · ` : ''}
                 {p.title ?? `第 ${(p.dayIndex ?? 0) + 1} 天`}
               </Text>
@@ -184,11 +213,91 @@ function MultiItineraryCard({
         icon={<EnvironmentOutlined />}
         loading={applying}
         onClick={onApplyAll}
-        className="!bg-violet-600 !border-violet-600"
+        className="agent-apply-btn"
       >
         将完整行程应用到日历（{plans.length} 天）
       </Button>
     </div>
+  );
+}
+
+function ClarificationCard({
+  clarification,
+  disabled,
+  onChoose,
+  onSkip,
+}: {
+  clarification: AgentClarification;
+  disabled: boolean;
+  onChoose: (option: AgentClarification['options'][number], detail?: string) => void;
+  onSkip: () => void;
+}) {
+  const [detailOption, setDetailOption] = useState<AgentClarification['options'][number] | null>(null);
+  const [detail, setDetail] = useState('');
+
+  const chooseOption = (option: AgentClarification['options'][number]) => {
+    if (option.requiresDetail) {
+      setDetailOption(option);
+      setDetail('');
+      return;
+    }
+    onChoose(option);
+  };
+
+  const submitDetail = () => {
+    const value = detail.trim();
+    if (!detailOption || !value) return;
+    onChoose(detailOption, value);
+  };
+
+  return (
+    <section className="agent-clarification-card" aria-label={CLARIFICATION_LABELS[clarification.field]}>
+      <div className="agent-clarification-card-heading">
+        <span>{CLARIFICATION_LABELS[clarification.field]}</span>
+        <small>选择一项</small>
+      </div>
+      <strong className="agent-clarification-question">{clarification.question}</strong>
+      <div className="agent-clarification-options">
+        {clarification.options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`agent-clarification-option ${detailOption?.value === option.value ? 'is-selected' : ''}`}
+            disabled={disabled}
+            onClick={() => chooseOption(option)}
+          >
+            <span>{option.label}</span>
+            {option.description && <small>{option.description}</small>}
+          </button>
+        ))}
+      </div>
+      {detailOption && (
+        <div className="agent-clarification-detail">
+          <Input
+            size="small"
+            value={detail}
+            disabled={disabled}
+            placeholder={detailOption.detailPlaceholder ?? '补充具体信息'}
+            onChange={(event) => setDetail(event.target.value)}
+            onPressEnter={submitDetail}
+          />
+          <Button type="primary" size="small" disabled={disabled || !detail.trim()} onClick={submitDetail}>
+            确认
+          </Button>
+          <small>仅填写区域、车站/机场与大致时间，请勿填写订单或证件信息。</small>
+        </div>
+      )}
+      {clarification.allowSkip !== false && (
+        <button
+          type="button"
+          className="agent-clarification-skip"
+          disabled={disabled}
+          onClick={onSkip}
+        >
+          直接生成
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -205,6 +314,9 @@ export function FreeAgentPanel({
   onSetActiveDay,
   onAddDay,
   onClearTrip,
+  onGenerationStart,
+  onPlanGenerated,
+  onGenerationFailed,
   embedded = false,
 }: {
   planStartDate: string | null;
@@ -213,12 +325,25 @@ export function FreeAgentPanel({
   days: DayPlan[];
   displayStops: TripStop[];
   searchCity: string | null;
-  onApplyPlan: (plan: AgentTripPlan, resolved: ResolvedAgentStop[], targetDayIndex: number) => Promise<void>;
-  onApplyPlans: (items: Array<{ plan: AgentTripPlan; resolved: ResolvedAgentStop[] }>) => Promise<void>;
+  onApplyPlan: (
+    plan: AgentTripPlan,
+    resolved: ResolvedAgentStop[],
+    targetDayIndex: number,
+    replanAttempt?: number
+  ) => Promise<AgentApplyOutcome>;
+  onApplyPlans: (
+    items: Array<{ plan: AgentTripPlan; resolved: ResolvedAgentStop[] }>,
+    replanAttempt?: number
+  ) => Promise<AgentApplyOutcome>;
   onSetPlanStartDate: (d: string | null) => void;
   onSetActiveDay: (i: number) => void;
   onAddDay: () => void;
   onClearTrip: () => void;
+  /** 请求开始后驱动地图上的临时编排动效，不会写入行程。 */
+  onGenerationStart?: () => void;
+  /** 模型返回结构化路线后，将其交给地图做临时预览。 */
+  onPlanGenerated?: (plans: AgentTripPlan[]) => void;
+  onGenerationFailed?: () => void;
   embedded?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
@@ -226,6 +351,9 @@ export function FreeAgentPanel({
   const [loading, setLoading] = useState(false);
   const [applyingPlanId, setApplyingPlanId] = useState<string | null>(null);
   const [llmStatus, setLlmStatus] = useState<LlmConnectionStatus>('checking');
+  const [clarificationAnswers, setClarificationAnswers] = useState<AgentClarificationAnswers>({});
+  const [clarificationCount, setClarificationCount] = useState(0);
+  const [skipClarifications, setSkipClarifications] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -244,12 +372,17 @@ export function FreeAgentPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
+  const send = useCallback(async (override?: {
+    content: string;
+    answers?: AgentClarificationAnswers;
+    clarificationCount?: number;
+    skipClarification?: boolean;
+  }) => {
+    const text = (override?.content ?? input).trim();
     if (!text || loading) return;
 
     if (llmStatus !== 'connected') {
-      message.warning('大模型未连接，请稍候');
+      message.warning('规划服务暂不可用，请稍候');
       return;
     }
 
@@ -261,15 +394,16 @@ export function FreeAgentPanel({
     };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
-    setInput('');
+    if (!override) setInput('');
     setLoading(true);
+    onGenerationStart?.();
 
     try {
       const apiMessages = nextMessages
         .filter((m) => m.id !== 'welcome' && (m.role === 'user' || m.role === 'assistant'))
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-      const { reply, plan, plans, itinerary, plansIncomplete } = await sendAgentChat({
+      const { reply, plan, plans, itinerary, plansIncomplete, clarification } = await sendAgentChat({
         messages: apiMessages,
         context: {
           city: searchCity,
@@ -284,6 +418,9 @@ export function FreeAgentPanel({
             dayTitle: d.title,
             stopNames: d.stops.map((s) => s.name),
           })),
+          clarificationAnswers: override?.answers ?? clarificationAnswers,
+          clarificationCount: override?.clarificationCount ?? clarificationCount,
+          skipClarification: override?.skipClarification ?? skipClarifications,
         },
       });
 
@@ -300,10 +437,18 @@ export function FreeAgentPanel({
         plans: merged ? merged.plans : plans ?? undefined,
         itinerary: itinerary ?? undefined,
         plansIncomplete: plansIncomplete ?? merged?.incomplete,
+        clarification: clarification ?? undefined,
         createdAt: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
       setLlmStatus('connected');
+
+      const generatedPlans = merged?.plans ?? plans ?? (plan ? [plan] : []);
+      if (generatedPlans.length) {
+        onPlanGenerated?.(generatedPlans);
+      } else {
+        onGenerationFailed?.();
+      }
     } catch (e) {
       console.error(e);
       const hint = describeApiError(e);
@@ -320,6 +465,7 @@ export function FreeAgentPanel({
           createdAt: Date.now(),
         },
       ]);
+      onGenerationFailed?.();
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -336,9 +482,128 @@ export function FreeAgentPanel({
     displayStops,
     llmStatus,
     days,
+    clarificationAnswers,
+    clarificationCount,
+    skipClarifications,
+    onGenerationStart,
+    onPlanGenerated,
+    onGenerationFailed,
   ]);
 
-  const applyPlan = async (msgId: string, plan: AgentTripPlan) => {
+  const answerClarification = useCallback(
+    (
+      clarification: AgentClarification,
+      option: AgentClarification['options'][number],
+      detail?: string
+    ) => {
+      if (loading) return;
+      const answer = detail ? `${option.value}：${detail}` : option.value;
+      const nextAnswers = { ...clarificationAnswers, [clarification.field]: answer };
+      const nextCount = Math.min(3, clarificationCount + 1);
+      setClarificationAnswers(nextAnswers);
+      setClarificationCount(nextCount);
+      void send({
+        content: `${CLARIFICATION_LABELS[clarification.field]}：${option.label}${detail ? `（${detail}）` : ''}`,
+        answers: nextAnswers,
+        clarificationCount: nextCount,
+      });
+    },
+    [clarificationAnswers, clarificationCount, loading, send]
+  );
+
+  const skipClarification = useCallback(() => {
+    if (loading) return;
+    setClarificationCount(3);
+    setSkipClarifications(true);
+    void send({
+      content: '请按已有信息和合理默认偏好直接生成完整行程。',
+      answers: clarificationAnswers,
+      clarificationCount: 3,
+      skipClarification: true,
+    });
+  }, [clarificationAnswers, loading, send]);
+
+  const requestReplan = async (replan: AgentReplanContext) => {
+    if (loading) return;
+    const userMsg: ChatMessage = {
+      id: uid(),
+      role: 'user',
+      content: '请依据地图真实耗时和时间冲突重新编排行程，保留必去点与住宿安排。',
+      createdAt: Date.now(),
+    };
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
+    setLoading(true);
+    onGenerationStart?.();
+    const hide = message.loading('真实路线存在时间冲突，正在重新编排…', 0);
+
+    try {
+      const apiMessages = nextMessages
+        .filter((item) => item.id !== 'welcome' && (item.role === 'user' || item.role === 'assistant'))
+        .map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content }));
+      const { reply, plan, plans, itinerary, plansIncomplete } = await sendAgentChat({
+        messages: apiMessages,
+        context: {
+          city: searchCity,
+          dayTitle: day?.title,
+          planDateLabel: activeDateLabel,
+          planStartDate,
+          activeDayIndex,
+          existingStopNames: displayStops.map((stop) => stop.name),
+          totalDays: days.length,
+          stopsByDay: days.map((item, index) => ({
+            dayIndex: index,
+            dayTitle: item.title,
+            stopNames: item.stops.map((stop) => stop.name),
+          })),
+          clarificationAnswers,
+          clarificationCount: 3,
+          skipClarification: true,
+          replan,
+        },
+      });
+      const merged = plans && plans.length > 1 ? mergePlansForApply(plans, plan, itinerary) : null;
+      const generatedPlans = merged?.plans ?? plans ?? (plan ? [plan] : []);
+      if (!generatedPlans.length) {
+        message.error('重排服务未返回可应用的行程，请手动调整站点');
+        onGenerationFailed?.();
+        return;
+      }
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: uid(),
+          role: 'assistant',
+          content: reply,
+          plan: merged ? undefined : plan ? { ...plan, dayIndex: plan.dayIndex ?? activeDayIndex } : undefined,
+          plans: merged ? merged.plans : plans ?? undefined,
+          itinerary: itinerary ?? undefined,
+          plansIncomplete: plansIncomplete ?? merged?.incomplete,
+          replanAttempt: replan.attempt,
+          createdAt: Date.now(),
+        },
+      ]);
+      onPlanGenerated?.(generatedPlans);
+      message.success('已根据真实路线重新编排，请确认后应用');
+    } catch (error) {
+      console.error(error);
+      message.error(describeApiError(error));
+      onGenerationFailed?.();
+    } finally {
+      hide();
+      setLoading(false);
+    }
+  };
+
+  const handleApplyOutcome = async (outcome: AgentApplyOutcome, replanAttempt: number) => {
+    if (outcome.status !== 'needs-replan') return;
+    if (replanAttempt >= 1) {
+      message.error('重排后仍存在时间冲突，已停止自动重排，请在站点详情中手动调整。');
+      return;
+    }
+    await requestReplan(outcome.replan);
+  };
+  const applyPlan = async (msgId: string, plan: AgentTripPlan, replanAttempt = 0) => {
     const targetDayIndex = plan.dayIndex ?? activeDayIndex;
     const confirmed = await confirmOverwriteExistingDays({
       days,
@@ -357,7 +622,8 @@ export function FreeAgentPanel({
         message.error('没有可应用的站点，请检查高德 Key 或地点名称');
         return;
       }
-      await onApplyPlan(plan, resolved, targetDayIndex);
+      const outcome = await onApplyPlan(plan, resolved, targetDayIndex, replanAttempt);
+      await handleApplyOutcome(outcome, replanAttempt);
     } catch (e) {
       console.error(e);
       message.error('应用路线失败');
@@ -371,7 +637,8 @@ export function FreeAgentPanel({
     msgId: string,
     plans: AgentTripPlan[],
     itinerary?: AgentItineraryMeta | null,
-    extraPlan?: AgentTripPlan | null
+    extraPlan?: AgentTripPlan | null,
+    replanAttempt = 0
   ) => {
     const { plans: normalized, incomplete } = mergePlansForApply(plans, extraPlan, itinerary);
     const confirmed = await confirmOverwriteExistingDays({
@@ -384,7 +651,7 @@ export function FreeAgentPanel({
     setApplyingPlanId(msgId);
     if (incomplete) {
       message.warning(
-        `行程不完整：应有 ${itinerary?.totalDays ?? '?'} 天，实际 ${normalized.length} 天。将先应用已有天数，请再让助手补全缺失日期。`
+        `行程不完整：应有 ${itinerary?.totalDays ?? '?'} 天，实际 ${normalized.length} 天。将先应用已有天数，请继续补全缺失日期。`
       );
     }
     const hide = message.loading(`正在应用 ${normalized.length} 日行程…`, 0);
@@ -414,7 +681,8 @@ export function FreeAgentPanel({
         return;
       }
 
-      await onApplyPlans(items);
+      const outcome = await onApplyPlans(items, replanAttempt);
+      await handleApplyOutcome(outcome, replanAttempt);
 
       if (skippedDays.length) {
         message.warning(`第 ${skippedDays.join('、')} 天因坐标解析失败未写入`);
@@ -443,15 +711,12 @@ export function FreeAgentPanel({
         {!embedded && (
           <div className="mb-2 flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
-                <RobotOutlined />
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700">
+                <CompassOutlined />
               </span>
               <div>
                 <Text strong className="block text-base text-slate-800">
-                  Atlas 助手
-                </Text>
-                <Text type="secondary" className="text-[11px]">
-                  对话规划 · 多日行程
+                  路线规划
                 </Text>
               </div>
             </div>
@@ -540,14 +805,14 @@ export function FreeAgentPanel({
         </div>
 
         {activeDateLabel && (
-          <Tag bordered={false} className="mb-2 !bg-violet-50 !text-violet-700">
+          <Tag bordered={false} className="mb-2 !bg-zinc-100 !text-zinc-700">
             当前规划：{activeDateLabel}
           </Tag>
         )}
 
         {llmStatus === 'disconnected' && (
           <Text type="danger" className="mb-2 block text-xs">
-            大模型未连接，请稍候。请确认 server 已启动且 .env 中 API Key 配置正确。
+            规划服务暂不可用。请确认后端服务已启动且接口配置正确。
           </Text>
         )}
 
@@ -561,7 +826,7 @@ export function FreeAgentPanel({
                 key={d.dayIndex}
                 size="small"
                 type={active ? 'primary' : 'default'}
-                className={active ? '!bg-violet-500 !border-violet-500' : ''}
+                className={active ? 'agent-day-active' : ''}
                 onClick={() => onSetActiveDay(i)}
               >
                 {d.title}
@@ -577,6 +842,9 @@ export function FreeAgentPanel({
             type="text"
             onClick={() => {
               setMessages([WELCOME]);
+              setClarificationAnswers({});
+              setClarificationCount(0);
+              setSkipClarifications(false);
               message.info('对话已清空');
             }}
           >
@@ -603,7 +871,7 @@ export function FreeAgentPanel({
             >
               {m.role === 'assistant' && (
                 <span className="chat-avatar chat-avatar--ai" aria-hidden>
-                  <RobotOutlined />
+                  <CompassOutlined />
                 </span>
               )}
               <div
@@ -622,6 +890,18 @@ export function FreeAgentPanel({
                     )
                   )}
                 </Paragraph>
+                {m.clarification && (
+                  <ClarificationCard
+                    clarification={m.clarification}
+                    disabled={
+                      loading ||
+                      skipClarifications ||
+                      Boolean(clarificationAnswers[m.clarification.field])
+                    }
+                    onChoose={(option, detail) => answerClarification(m.clarification!, option, detail)}
+                    onSkip={skipClarification}
+                  />
+                )}
                 {m.plans && m.plans.length > 1 && (
                   <MultiItineraryCard
                     plans={m.plans}
@@ -629,7 +909,13 @@ export function FreeAgentPanel({
                     applying={applyingPlanId === m.id}
                     planStartDate={planStartDate}
                     onApplyAll={() =>
-                      void applyAllPlans(m.id, m.plans!, m.itinerary, m.plan ?? undefined)
+                      void applyAllPlans(
+                        m.id,
+                        m.plans!,
+                        m.itinerary,
+                        m.plan ?? undefined,
+                        m.replanAttempt ?? 0
+                      )
                     }
                   />
                 )}
@@ -647,7 +933,7 @@ export function FreeAgentPanel({
                       plan={singlePlan}
                       applying={applyingPlanId === m.id}
                       applyLabel={label}
-                      onApply={() => void applyPlan(m.id, singlePlan)}
+                      onApply={() => void applyPlan(m.id, singlePlan, m.replanAttempt ?? 0)}
                     />
                   );
                 })()}
@@ -662,7 +948,7 @@ export function FreeAgentPanel({
           {loading && (
             <div className="chat-row chat-row--assistant">
               <span className="chat-avatar chat-avatar--ai" aria-hidden>
-                <RobotOutlined />
+                <CompassOutlined />
               </span>
               <div className="agent-bubble agent-bubble--assistant agent-bubble--typing flex items-center gap-2 px-4 py-3">
                 <Spin size="small" />

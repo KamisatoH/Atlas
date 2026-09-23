@@ -10,34 +10,36 @@ export default function App() {
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {
-          colorPrimary: '#059669',
-          colorLink: '#059669',
-          colorLinkHover: '#047857',
-          borderRadius: 12,
-          borderRadiusLG: 16,
-          colorBgLayout: '#eef2f6',
+          colorPrimary: '#18181b',
+          colorPrimaryHover: '#27272a',
+          colorPrimaryActive: '#09090b',
+          colorLink: '#3f3f46',
+          colorLinkHover: '#18181b',
+          borderRadius: 10,
+          borderRadiusLG: 14,
+          colorBgLayout: '#f4f4f5',
           colorBgContainer: '#ffffff',
-          colorBorder: '#e2e8f0',
-          colorText: '#1e293b',
-          colorTextSecondary: '#64748b',
+          colorBorder: '#e4e4e7',
+          colorText: '#18181b',
+          colorTextSecondary: '#71717a',
           fontFamily:
             "'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif",
           boxShadowSecondary:
-            '0 4px 24px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
+            '0 12px 32px rgba(24, 24, 27, 0.08), 0 1px 2px rgba(24, 24, 27, 0.06)',
         },
         components: {
           Button: {
-            primaryShadow: '0 2px 8px rgba(5, 150, 105, 0.22)',
-            defaultBorderColor: '#e2e8f0',
+            primaryShadow: '0 3px 10px rgba(24, 24, 27, 0.18)',
+            defaultBorderColor: '#d4d4d8',
             fontWeight: 500,
           },
           Table: {
-            headerBg: '#f8fafc',
-            headerColor: '#64748b',
-            rowHoverBg: '#f0fdf4',
+            headerBg: '#fafafa',
+            headerColor: '#71717a',
+            rowHoverBg: '#f4f4f5',
           },
           Tag: {
-            defaultBg: '#f1f5f9',
+            defaultBg: '#f4f4f5',
           },
           Modal: {
             borderRadiusLG: 16,

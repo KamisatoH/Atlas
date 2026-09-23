@@ -10,7 +10,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { DeleteOutlined, HolderOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, HolderOutlined } from '@ant-design/icons';
 import { POI_TYPE_META } from '@/lib/poiTypeMeta';
 import { tripNodeCaption, tripSegmentCount } from '@/lib/tripLabels';
 import { PoiTypeTag } from '@/components/PoiTypeTag';
@@ -101,43 +101,45 @@ export function DayStopsSection({
               onChange={(e) => onUpdateDay(activeDayIndex, { dayStart: e.target.value })}
             />
           </Space>
-          <Tag bordered={false} color="processing" className="!m-0">
+          <Tag bordered={false} className="!m-0 !bg-zinc-100 !text-zinc-600">
             {tripSegmentCount(displayStops.length)} 段 · {displayStops.length} 站
           </Tag>
           <Text type="secondary" className="text-[11px]">
-            拖拽 ≡ 调整顺序
+            <span className="desktop-order-hint">拖拽 ≡ 调整顺序</span>
+            <span className="mobile-order-hint">使用上下按钮调整顺序</span>
           </Text>
         </div>
       </div>
 
       <div ref={stopsTableWrapRef} className="min-h-0 flex-1 overflow-hidden">
-        <Table
-          key={`stops-day-${activeDayIndex}`}
-          size="middle"
-          pagination={false}
-          scroll={{ y: tableScrollY, x: 'max-content' }}
-          rowKey="id"
-          dataSource={displayStops}
-          locale={{ emptyText }}
-          onRow={(_, index) => ({
-            className:
-              dragOverIndex === index
-                ? 'trip-stop-row-drag-over !bg-emerald-50/80'
-                : 'trip-stop-row',
-            onDragOver: (e) => {
-              e.preventDefault();
-              if (index != null) setDragOverIndex(index);
-            },
-            onDragLeave: () => setDragOverIndex(null),
-            onDrop: (e) => {
-              e.preventDefault();
-              setDragOverIndex(null);
-              const from = Number(e.dataTransfer.getData('text/plain'));
-              if (Number.isNaN(from) || index == null || from === index) return;
-              onReorderStops(from, index);
-            },
-          })}
-          columns={[
+        <div className="day-stops-table h-full">
+          <Table
+            key={`stops-day-${activeDayIndex}`}
+            size="middle"
+            pagination={false}
+            scroll={{ y: tableScrollY, x: 'max-content' }}
+            rowKey="id"
+            dataSource={displayStops}
+            locale={{ emptyText }}
+            onRow={(_, index) => ({
+              className:
+                dragOverIndex === index
+                  ? 'trip-stop-row-drag-over !bg-zinc-100/80'
+                  : 'trip-stop-row',
+              onDragOver: (e) => {
+                e.preventDefault();
+                if (index != null) setDragOverIndex(index);
+              },
+              onDragLeave: () => setDragOverIndex(null),
+              onDrop: (e) => {
+                e.preventDefault();
+                setDragOverIndex(null);
+                const from = Number(e.dataTransfer.getData('text/plain'));
+                if (Number.isNaN(from) || index == null || from === index) return;
+                onReorderStops(from, index);
+              },
+            })}
+            columns={[
             {
               title: '',
               width: 28,
@@ -285,14 +287,136 @@ export function DayStopsSection({
                 />
               ),
             },
-          ]}
-        />
+            ]}
+          />
+        </div>
+
+        <div className="mobile-stops-list" aria-label="当日站点编辑">
+          {displayStops.length === 0 ? (
+            <div className="mobile-stops-empty">{emptyText}</div>
+          ) : (
+            displayStops.map((stop, index) => {
+              const nextStop = displayStops[index + 1];
+              const isLast = index === displayStops.length - 1;
+              return (
+                <article key={stop.id} className="mobile-stop-card">
+                  <div className="mobile-stop-card-head">
+                    <div className="min-w-0">
+                      <Text type="secondary" className="block text-[11px] leading-tight">
+                        {tripNodeCaption(index, displayStops.length, 'full')}
+                      </Text>
+                      <Text strong className="block truncate text-sm text-zinc-900">
+                        {stop.name}
+                      </Text>
+                    </div>
+                    <PoiTypeTag type={stop.type} />
+                  </div>
+
+                  {(stop.note || stop.arriveTime || stop.leaveTime) && (
+                    <div className="mobile-stop-card-meta">
+                      {stop.arriveTime || stop.leaveTime ? (
+                        <span>{stop.arriveTime ?? '—'} – {stop.leaveTime ?? '—'}</span>
+                      ) : null}
+                      {stop.note ? <span>{stop.note}</span> : null}
+                    </div>
+                  )}
+
+                  <div className="mobile-stop-fields">
+                    <label>
+                      <span>类型</span>
+                      <Select
+                        size="middle"
+                        value={stop.type}
+                        options={POI_TYPE_OPTS}
+                        onChange={(value) => onUpdateStop(activeDayIndex, stop.id, { type: value as PoiType })}
+                      />
+                    </label>
+                    <label>
+                      <span>游玩</span>
+                      <InputNumber
+                        size="middle"
+                        min={0}
+                        max={600}
+                        controls={false}
+                        value={stop.playMinutes}
+                        addonAfter="分"
+                        onChange={(value) =>
+                          onUpdateStop(activeDayIndex, stop.id, {
+                            playMinutes: value == null ? 90 : Number(value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>闭馆</span>
+                      <Input
+                        size="middle"
+                        placeholder="未设置"
+                        value={stop.closeTime}
+                        onChange={(event) => onUpdateStop(activeDayIndex, stop.id, { closeTime: event.target.value })}
+                      />
+                    </label>
+                  </div>
+
+                  {!isLast && nextStop && (
+                    <div className="mobile-stop-route">
+                      <div className="min-w-0">
+                        <span>前往 {nextStop.name}</span>
+                        <Select
+                          size="middle"
+                          value={stop.transportToNext}
+                          options={TRANS_OPTS.map((item) => ({ label: item.l, value: item.v }))}
+                          onChange={(value) =>
+                            onUpdateStop(activeDayIndex, stop.id, { transportToNext: value as TransportMode })
+                          }
+                        />
+                      </div>
+                      <Button size="middle" onClick={() => onTransportCompare(stop, nextStop)}>
+                        对比
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="mobile-stop-actions">
+                    <Button
+                      size="middle"
+                      icon={<ArrowUpOutlined />}
+                      disabled={index === 0}
+                      aria-label={`将${stop.name}上移`}
+                      onClick={() => onReorderStops(index, index - 1)}
+                    >
+                      上移
+                    </Button>
+                    <Button
+                      size="middle"
+                      icon={<ArrowDownOutlined />}
+                      disabled={isLast}
+                      aria-label={`将${stop.name}下移`}
+                      onClick={() => onReorderStops(index, index + 1)}
+                    >
+                      下移
+                    </Button>
+                    <Button
+                      size="middle"
+                      danger
+                      icon={<DeleteOutlined />}
+                      aria-label={`删除${stop.name}`}
+                      onClick={() => onRemoveStop(activeDayIndex, stop.id)}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
 
         {warnings.length > 0 && (
           <Alert
             className="mt-2 shrink-0 py-1.5"
             type="warning"
-            message="时间冲突"
+            message="时间提醒"
             description={
               <ul className="mb-0 pl-4 text-xs">
                 {warnings.map((w, i) => (

@@ -26,17 +26,14 @@ export function SearchExplorePanel({
         </span>
         <div className="min-w-0 flex-1">
           <Text strong className="block text-sm text-slate-800">
-            探索目的地
-          </Text>
-          <Text type="secondary" className="block text-[11px]">
-            从地图灵感开始，把地点送进你的旅行工作台
+            地点
           </Text>
         </div>
       </div>
 
       {searchCity && (
-        <div className="search-city-banner mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5">
-          <Text className="text-xs text-emerald-800">
+        <div className="search-city-banner mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-zinc-100 px-2.5 py-1.5">
+          <Text className="text-xs text-zinc-700">
             当前城市切换为「<Text strong>{searchCity}</Text>」
           </Text>
           {onClearCity && (
@@ -48,25 +45,17 @@ export function SearchExplorePanel({
       )}
 
       <PoiSearch city={searchCity} onSelect={onSelectPoi} placeholder="搜索景点、餐厅、酒店…" />
-      <div className="search-suggestion-row mt-2 flex flex-wrap gap-1.5">
-        <span className="search-suggestion-pill">双击地图选点</span>
-        <span className="search-suggestion-pill">点击周边店铺加入</span>
-        <span className="search-suggestion-pill">酒店也能作为每日起终点</span>
-      </div>
-      <Text type="secondary" className="search-explore-hint mt-1.5 block text-xs leading-relaxed">
-        搜索或双击地图选点；选定地点后将按所属城市限定后续搜索。
-      </Text>
 
       {selectedPoi && (
-        <div className="poi-preview-card mt-3 rounded-xl border border-emerald-100 bg-white/95 p-3 shadow-sm backdrop-blur-sm">
+        <div className="poi-preview-card mt-3 rounded-xl border border-zinc-200 bg-white/95 p-3 shadow-sm backdrop-blur-sm">
           <div className="mb-1 flex items-start gap-2">
-            <EnvironmentOutlined className="mt-0.5 shrink-0 text-emerald-500" />
+            <EnvironmentOutlined className="mt-0.5 shrink-0 text-zinc-700" />
             <div className="min-w-0 flex-1">
               <Text strong className="block leading-snug text-slate-800">
                 {selectedPoi.name}
               </Text>
               {selectedPoi.city && (
-                <Tag bordered={false} color="green" className="!mr-0 !mt-1 text-[10px]">
+                <Tag bordered={false} className="!mr-0 !mt-1 !bg-zinc-100 !text-zinc-600 text-[10px]">
                   {selectedPoi.city}
                 </Tag>
               )}

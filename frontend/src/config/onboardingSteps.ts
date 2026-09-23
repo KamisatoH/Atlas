@@ -17,7 +17,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     id: 'welcome',
     title: '欢迎使用 Atlas',
     description:
-      'Atlas 是地图驱动的行程工具：在大地图上探索地点、用 AI 对话规划路线，并在行程面板里查看到达/离开时间与路段交通。跟着引导快速上手吧。',
+      'Atlas 以对话规划为起点：先生成可执行路线，再随时回到地图与日程中手动调整。',
     placement: 'center',
   },
   {
@@ -40,31 +40,12 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'ai-assistant',
-    title: 'AI 助手 · 对话规划',
-    target: '[data-tour="ai-assistant"]',
-    placement: 'bottom',
-    padding: 8,
-    description:
-      '告诉助手城市、天数和偏好，可生成单日或多日连续行程。生成后点击「应用」写入对应日期；若该日已有站点会先提示是否覆盖。',
-  },
-  {
-    id: 'trip-planning',
-    title: '行程规划 · 时间与站点',
-    target: '[data-tour="trip-planning"]',
-    placement: 'bottom',
-    padding: 8,
-    description:
-      '在这里切换旅程日期、编辑每日站点顺序、调整游玩时长与交通方式。系统会根据路段耗时推算各站到达/离开时间。',
-  },
-  {
-    id: 'map-shortcuts',
-    title: '地图快捷入口',
-    target: '[data-tour="map-entries"]',
+    title: '规划路线 · 对话起步',
+    target: '[data-tour="planning-workbench"]',
     placement: 'left',
     padding: 8,
-    optional: true,
     description:
-      '侧栏收起时，地图右侧也会出现「AI 助手」和「行程规划」快捷按钮，方便在大地图全屏模式下随时唤出。',
+      '输入城市、天数和偏好，可生成单日或多日连续行程。应用后可在同一工作台切换到「自主规划」，编辑站点、时长与交通。',
   },
   {
     id: 'toolbar',
@@ -78,7 +59,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     id: 'finish',
     title: '准备出发',
-    description: '教程就到这里。随时在顶栏打开 AI 助手与行程规划，用 Atlas 开始规划你的下一段旅程吧。',
+    description: '教程就到这里。地图与规划工作台会始终并排，随时可以继续调整。',
     placement: 'center',
   },
 ];

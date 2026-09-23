@@ -18,6 +18,11 @@ export interface AmapViewProps {
   stops: TripStop[];
   dayIndex: number;
   onSegmentMinutes: (fromStopId: string, minutes: number) => void;
+  /** 未应用到行程的临时路线，用于生成过程中的地图预览。 */
+  generationStops?: TripStop[];
+  generationActive?: boolean;
+  onGenerationProgress?: (shownStops: number, totalStops: number) => void;
+  onGenerationComplete?: () => void;
   /** 当前探索选中的 POI，用于地图高亮与定位 */
   highlightPoi?: PoiHit | null;
   /** 双击地图：逆地理编码后选中 POI（探索模式，不直接加入行程） */
@@ -165,16 +170,16 @@ function buildRegeoInfoView(
       const pAddr = escapeHtml(String(item.poi.address ?? ''));
       const dist = item.distance ? ` · 约 ${escapeHtml(item.distance)} m` : '';
       const primaryStyle = item.isPrimary
-        ? 'background:#ecfdf5;border:1px solid #6ee7b7;'
+        ? 'background:#f4f4f5;border:1px solid #a1a1aa;'
         : '';
       parts.push(
         `<div class="mf-nearby-poi" data-poi-idx="${idx}" style="border-top:1px solid #e5e7eb;padding:6px 4px;cursor:pointer;border-radius:6px;${primaryStyle}">`,
-        `<div style="font-weight:500;color:#1f2937;">${escapeHtml(item.poi.name)}${item.isPrimary ? ' <span style="color:#059669;font-size:10px;">(当前点击)</span>' : ''}</div>`,
+        `<div style="font-weight:500;color:#1f2937;">${escapeHtml(item.poi.name)}${item.isPrimary ? ' <span style="color:#52525b;font-size:10px;">(当前点击)</span>' : ''}</div>`,
         type ? `<div style="color:#6b7280;font-size:11px;">${type}</div>` : '',
         pAddr ? `<div style="color:#6b7280;font-size:11px;">${pAddr}</div>` : '',
         `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">`,
         `<span style="color:#9ca3af;font-size:10px;">${dist}</span>`,
-        `<span class="mf-nearby-poi-action" style="color:#34d399;font-size:10px;font-weight:500;">+ 加入行程</span>`,
+        `<span class="mf-nearby-poi-action" style="color:#27272a;font-size:10px;font-weight:500;">+ 加入行程</span>`,
         `</div>`,
         '</div>'
       );
@@ -299,6 +304,10 @@ export function AmapView({
   stops,
   dayIndex,
   onSegmentMinutes,
+  generationStops = [],
+  generationActive = false,
+  onGenerationProgress,
+  onGenerationComplete,
   highlightPoi,
   onMapSelect,
   onNearbyPoiAdd,
@@ -309,6 +318,8 @@ export function AmapView({
   const highlightMarkerRef = useRef<any>(null);
   const polylinesRef = useRef<any[]>([]);
   const nativeDrivingRef = useRef<any[]>([]);
+  const generationOverlaysRef = useRef<any[]>([]);
+  const generationTimerRef = useRef<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const lastRouteSigRef = useRef<string>('');
   const routeGenRef = useRef(0);
@@ -472,6 +483,98 @@ export function AmapView({
     }
   }, [mapReady, stops, dayIndex, stableReport]);
 
+  /**
+   * 路线生成预览：只画临时的节点和直连虚线，绝不触发正式算路或回写行程。
+   * 正式应用后仍由上面的 effect 使用高德服务绘制真实交通路径。
+   */
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const { map, AMap } = mapRef.current;
+
+    const clearPreview = () => {
+      if (generationTimerRef.current != null) {
+        window.clearTimeout(generationTimerRef.current);
+        generationTimerRef.current = null;
+      }
+      generationOverlaysRef.current.forEach((overlay) => {
+        try {
+          map.remove(overlay);
+        } catch {
+          /* ignore */
+        }
+      });
+      generationOverlaysRef.current = [];
+    };
+
+    clearPreview();
+    if (!generationActive || generationStops.length === 0) return clearPreview;
+
+    let cancelled = false;
+    let shown = 0;
+    const addStep = () => {
+      if (cancelled || !mapRef.current) return;
+      const stop = generationStops[shown];
+      if (!stop) return;
+
+      const marker = new AMap.Marker({
+        position: [stop.lng, stop.lat],
+        title: `路线草案 · ${stop.name}`,
+        content: `<span class="atlas-route-draft-node">${shown + 1}</span>`,
+        offset: new AMap.Pixel(-13, -13),
+        zIndex: 160,
+      });
+      map.add(marker);
+      generationOverlaysRef.current.push(marker);
+
+      if (shown > 0) {
+        const previous = generationStops[shown - 1];
+        const segment = new AMap.Polyline({
+          path: [
+            [previous.lng, previous.lat],
+            [stop.lng, stop.lat],
+          ],
+          strokeColor: '#18181b',
+          strokeWeight: 4,
+          strokeOpacity: 0.82,
+          strokeStyle: 'dashed',
+          strokeDasharray: [10, 8],
+          lineJoin: 'round',
+          zIndex: 150,
+        });
+        map.add(segment);
+        generationOverlaysRef.current.push(segment);
+      }
+
+      shown += 1;
+      onGenerationProgress?.(shown, generationStops.length);
+
+      if (shown === 1) {
+        map.setCenter([stop.lng, stop.lat]);
+      }
+      if (shown >= generationStops.length) {
+        if (generationOverlaysRef.current.length > 1) {
+          map.setFitView(generationOverlaysRef.current, false, [76, 76, 76, 76]);
+        }
+        onGenerationComplete?.();
+        return;
+      }
+
+      generationTimerRef.current = window.setTimeout(addStep, 560);
+    };
+
+    addStep();
+    return () => {
+      cancelled = true;
+      clearPreview();
+    };
+  }, [
+    mapReady,
+    generationActive,
+    generationStops,
+    onGenerationProgress,
+    onGenerationComplete,
+  ]);
+
   /** 探索选中点：独立高亮标记并定位 */
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -493,7 +596,7 @@ export function AmapView({
       title: highlightPoi.name,
       zIndex: 200,
       label: {
-        content: `<span style="background:#34d399;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">${escapeHtml(highlightPoi.name)}</span>`,
+        content: `<span style="background:#18181b;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">${escapeHtml(highlightPoi.name)}</span>`,
         direction: 'top',
       },
     });

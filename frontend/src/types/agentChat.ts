@@ -1,6 +1,63 @@
-import type { PoiType, TransportMode } from '@/types/trip';
+import type { PoiType, StopPriority, TransportMode, TripPace } from '@/types/trip';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
+
+/** 可由选择卡确认的行程偏好。城市、天数等开放输入仍由普通对话处理。 */
+export type ClarificationField =
+  | 'pace'
+  | 'interest'
+  | 'transport'
+  | 'companions'
+  | 'budget'
+  | 'startArea'
+  | 'accommodation'
+  | 'arrival';
+
+export interface AgentClarificationOption {
+  value: string;
+  label: string;
+  description?: string;
+  /** 选择后需要补充酒店区域、车站或到达时间等具体信息。 */
+  requiresDetail?: boolean;
+  detailPlaceholder?: string;
+}
+
+/** 模型返回的结构化澄清问题，由前端直接渲染为选择卡。 */
+export interface AgentClarification {
+  field: ClarificationField;
+  question: string;
+  options: AgentClarificationOption[];
+  allowSkip?: boolean;
+}
+
+export type AgentClarificationAnswers = Partial<Record<ClarificationField, string>>;
+
+export interface AgentReplanContext {
+  /** 同一份方案最多允许一次基于真实路线的模型重排。 */
+  attempt: number;
+  days: Array<{
+    dayIndex: number;
+    title: string;
+    dayStart: string;
+    endTime: string;
+    totalTravelMinutes: number;
+    totalVisitMinutes: number;
+    totalScheduledMinutes: number;
+    issues: Array<{ code: string; stopName?: string; message: string }>;
+    stops: Array<{
+      name: string;
+      type: PoiType;
+      priority?: StopPriority;
+      playMinutes: number;
+      openTime?: string;
+      closeTime?: string;
+      arriveTime?: string;
+      leaveTime?: string;
+      travelMinutesToNext?: number;
+      transportToNext?: TransportMode;
+    }>;
+  }>;
+}
 
 export interface ChatMessage {
   id: string;
@@ -14,6 +71,10 @@ export interface ChatMessage {
   itinerary?: AgentItineraryMeta | null;
   /** 返回的 plans 少于 totalDays */
   plansIncomplete?: boolean;
+  /** 需要用户确认的单个偏好问题。 */
+  clarification?: AgentClarification | null;
+  /** 该方案是否已由真实路线约束触发过一次重排。 */
+  replanAttempt?: number;
   createdAt: number;
 }
 
@@ -24,6 +85,8 @@ export interface AgentPlanStop {
   lat?: number;
   type?: PoiType;
   playMinutes?: number;
+  /** 仅 optional 站点会在时间冲突无法修复时被自动移除。 */
+  priority?: StopPriority;
   note?: string;
   openTime?: string;
   closeTime?: string;
@@ -35,6 +98,8 @@ export interface AgentTripPlan {
   city?: string;
   title?: string;
   dayStart?: string;
+  /** 本日节奏；决定用餐、午后休整等自然时间块的强度。 */
+  pace?: TripPace;
   /** 目标日程索引（0 起），与当前选中的「第 N 天」对应 */
   dayIndex?: number;
   stops: AgentPlanStop[];
@@ -61,6 +126,14 @@ export interface AgentChatContext {
   totalDays?: number;
   /** 各日已有站点摘要，供多日增量规划 */
   stopsByDay?: Array<{ dayIndex: number; dayTitle?: string; stopNames: string[] }>;
+  /** 已由选择卡确认的偏好；后端据此避免重复提问。 */
+  clarificationAnswers?: AgentClarificationAnswers;
+  /** 本轮会话已经主动展示过的选择卡数量，最多为 3。 */
+  clarificationCount?: number;
+  /** 用户选择按默认偏好直接生成时为 true。 */
+  skipClarification?: boolean;
+  /** 高德实测路线校验失败时传入；模型只能重排，不得追问。 */
+  replan?: AgentReplanContext;
 }
 
 export interface AgentChatRequest {
@@ -77,4 +150,7 @@ export interface AgentChatResponse {
   itinerary?: AgentItineraryMeta | null;
   /** plans 少于 itinerary.totalDays 时为 true */
   plansIncomplete?: boolean;
+  clarification?: AgentClarification | null;
+  /** 该方案是否已由真实路线约束触发过一次重排。 */
+  replanAttempt?: number;
 }

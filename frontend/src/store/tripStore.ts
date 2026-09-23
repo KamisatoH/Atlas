@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import dayjs from 'dayjs';
 import {
   emptyTrip,
   normalizeTripState,
@@ -8,6 +7,7 @@ import {
   type TripState,
   type TripStop,
 } from '@/types/trip';
+import { evaluateDaySchedule } from '@/lib/scheduleEngine';
 
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -24,7 +24,7 @@ export interface TripStore extends TripState {
   setPlanStartDate: (isoDate: string | null) => void;
   setActiveDay: (i: number) => void;
   addDay: () => void;
-  updateDay: (dayIndex: number, patch: Partial<Pick<DayPlan, 'title' | 'dayStart'>>) => void;
+  updateDay: (dayIndex: number, patch: Partial<Pick<DayPlan, 'title' | 'dayStart' | 'pace'>>) => void;
   addStop: (
     dayIndex: number,
     partial: Omit<TripStop, 'id' | 'playMinutes'> & { playMinutes?: number }
@@ -36,80 +36,23 @@ export interface TripStore extends TripState {
   replaceDayStops: (
     dayIndex: number,
     stops: Array<Omit<TripStop, 'id'> & { id?: string }>,
-    dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart'>>
+    dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart' | 'pace'>>
   ) => void;
   ensureDays: (minCount: number) => void;
   replaceMultipleDayStops: (
     entries: Array<{
       dayIndex: number;
       stops: Array<Omit<TripStop, 'id'> & { id?: string }>;
-      dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart'>>;
+      dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart' | 'pace'>>;
     }>
   ) => void;
   loadState: (s: unknown) => void;
   reset: () => void;
 }
 
-function timeToHours(hm: string): number {
-  const [h, m] = hm.split(':').map(Number);
-  return h + (m || 0) / 60;
-}
-
-function segmentTravelMinutes(stop: TripStop | undefined, fallback = 30): number {
-  const raw = stop?.travelMinutesToNext;
-  if (raw == null) return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) return fallback;
-  return n;
-}
-
 function recomputeTimes(day: DayPlan): { day: DayPlan; warnings: string[] } {
-  const warnings: string[] = [];
-  const stops = [...day.stops];
-  if (stops.length === 0) return { day: { ...day, stops }, warnings };
-
-  const dayStart = dayjs(`2000-01-01 ${day.dayStart || '09:00'}`);
-  let leaveCursor = dayStart;
-
-  for (let i = 0; i < stops.length; i++) {
-    const s = { ...stops[i] };
-    if (i === 0) {
-      const dep = s.departTime ? dayjs(`2000-01-01 ${s.departTime}`) : dayStart;
-      s.arriveTime = dep.format('HH:mm');
-      leaveCursor = dep.add(s.playMinutes ?? 120, 'minute');
-      s.leaveTime = leaveCursor.format('HH:mm');
-    } else {
-      const travel = segmentTravelMinutes(stops[i - 1]);
-      leaveCursor = leaveCursor.add(travel, 'minute');
-      s.arriveTime = leaveCursor.format('HH:mm');
-      const close = parseClose(s.closeTime);
-      if (close != null && timeToHours(s.arriveTime ?? '00:00') > close - 1 / 60) {
-        warnings.push(`${s.name}：预计到达 ${s.arriveTime}，可能晚于闭馆 ${s.closeTime}`);
-      }
-      leaveCursor = leaveCursor.add(s.playMinutes ?? 120, 'minute');
-      s.leaveTime = leaveCursor.format('HH:mm');
-    }
-    stops[i] = s;
-
-    if (i < stops.length - 1) {
-      const next = stops[i + 1];
-      const closeNext = parseClose(next.closeTime);
-      const travel = segmentTravelMinutes(s);
-      const eta = leaveCursor.add(travel, 'minute');
-      if (closeNext != null && timeToHours(eta.format('HH:mm')) > closeNext) {
-        warnings.push(
-          `从「${s.name}」出发预计 ${eta.format('HH:mm')} 抵达「${next.name}」，可能无法在 ${next.closeTime} 闭馆前到达。`
-        );
-      }
-    }
-  }
-
-  return { day: { ...day, stops }, warnings };
-}
-
-function parseClose(s?: string): number | null {
-  if (!s || !/^\d{1,2}:\d{2}/.test(s)) return null;
-  return timeToHours(s);
+  const report = evaluateDaySchedule(day);
+  return { day: report.day, warnings: report.warnings };
 }
 
 function partialsToStops(
@@ -118,6 +61,7 @@ function partialsToStops(
   return partials.map((p, i, arr) => ({
     id: p.id ?? uid(),
     playMinutes: p.playMinutes ?? 90,
+    priority: p.priority,
     transportToNext:
       p.transportToNext ?? (i < arr.length - 1 ? 'driving' : undefined),
     type: p.type ?? 'scenic',
@@ -142,7 +86,7 @@ function recomputeTripDays(data: ModeTripData): ModeTripData {
 function dayWithRecomputedStops(
   base: DayPlan,
   partials: Array<Omit<TripStop, 'id'> & { id?: string }>,
-  dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart'>>
+  dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart' | 'pace'>>
 ): DayPlan {
   return recomputeTimes({
     ...base,
@@ -196,7 +140,7 @@ export const useTripStore = create<TripStore>((set) => ({
         days: d.days.map((x, i) => {
           if (i !== dayIndex) return x;
           const next = { ...x, ...patch };
-          return 'dayStart' in patch ? recomputeTimes(next).day : next;
+          return 'dayStart' in patch || 'pace' in patch ? recomputeTimes(next).day : next;
         }),
       }))
     ),
@@ -335,7 +279,7 @@ export const useTripStore = create<TripStore>((set) => ({
           {
             dayIndex: number;
             stops: Array<Omit<TripStop, 'id'> & { id?: string }>;
-            dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart'>>;
+            dayPatch?: Partial<Pick<DayPlan, 'title' | 'dayStart' | 'pace'>>;
           }
         >();
         for (const entry of entries) {
