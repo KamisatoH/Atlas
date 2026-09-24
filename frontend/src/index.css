@@ -1891,6 +1891,44 @@ body.onboarding-active {
 @media (max-width: 560px) { .atlas-hero-page { overflow: auto; }.atlas-hero-nav { width: calc(100% - 32px); height: 68px; }.atlas-nav-links { gap: 11px; font-size: 12px; }.atlas-nav-links button:nth-child(2) { display: none; }.atlas-nav-links .ant-btn { padding-inline: 9px; }.atlas-hero { width: calc(100% - 32px); padding-top: 42px; gap: 35px; }.atlas-eyebrow { margin-bottom: 16px; font-size: 10px; }.atlas-hero-copy h1 { font-size: clamp(38px, 11vw, 50px); }.atlas-hero-lede { margin-top: 19px; font-size: 14px; line-height: 1.72; }.atlas-hero-actions { align-items: flex-start; flex-direction: column; gap: 17px; margin-top: 27px; }.atlas-proof { margin-top: 30px; font-size: 9px; }.atlas-route-stage { min-height: 430px; border-radius: 18px; }.atlas-route-title { top: 61px; left: 20px; font-size: 20px; }.atlas-stage-topline { top: 20px; left: 20px; right: 20px; }.atlas-route-svg { top: 89px; left: 0; height: 290px; width: 100%; }.atlas-stop-1 { left: 9%; bottom: 82px; }.atlas-stop-2 { left: 45%; top: 164px; }.atlas-stop-3 { right: 4%; top: 101px; }.atlas-stop-name { font-size: 11px; }.atlas-stop-time { font-size: 10px; }.atlas-route-note { right: 14px; bottom: 16px; width: 55%; padding: 10px; }.atlas-route-summary { width: 57%; padding: 13px 5px 14px 20px; }.atlas-route-summary strong { font-size: 13px; }.atlas-route-summary span { font-size: 8px; }.atlas-hero-footer { width: calc(100% - 32px); padding-bottom: 15px; font-size: 8px; }.atlas-hero-footer span:last-child { display: none; } }
 @media (prefers-reduced-motion: reduce) { .atlas-hero-copy, .atlas-route-stage, .atlas-route-line, .atlas-stop, .atlas-route-note { animation: none; } .atlas-route-line { stroke-dashoffset: 0; } }
 
+/* 夜航地貌：用真实地形承载 Atlas 的「从地图开始」而非纯色背景。 */
+.atlas-hero-page {
+  --atlas-ink: #f5f8fb;
+  --atlas-muted: #b9c8d4;
+  --atlas-blue: #9ad9ee;
+  --atlas-blue-soft: rgba(105, 197, 231, .24);
+  --atlas-line: rgba(213, 233, 244, .26);
+  position: relative;
+  isolation: isolate;
+  background: #06101d url('/atlas-hero-terrain.png') center / cover fixed no-repeat;
+}
+
+.atlas-hero-page::before,
+.atlas-hero-page::after { position: absolute; z-index: -1; inset: 0; content: ''; pointer-events: none; }
+.atlas-hero-page::before { background: linear-gradient(90deg, rgba(3, 11, 21, .94) 0%, rgba(3, 11, 21, .78) 34%, rgba(3, 11, 21, .31) 65%, rgba(3, 11, 21, .24) 100%), linear-gradient(0deg, rgba(2, 8, 16, .7), transparent 46%); }
+.atlas-hero-page::after { inset: auto -10% 0 auto; width: 62vw; height: 56vh; background: radial-gradient(ellipse, rgba(85, 173, 231, .22), transparent 68%); filter: blur(26px); }
+.atlas-hero-nav { position: relative; z-index: 1; border-bottom-color: rgba(225, 239, 248, .2); }
+.atlas-wordmark, .atlas-nav-links { color: #f6f9fc; }
+.atlas-mark { background: #e7f5fb; color: #102238; box-shadow: 0 0 22px rgba(178, 229, 247, .35); }
+.atlas-nav-links button:hover, .atlas-stage-topline button:hover, .atlas-quiet-action:hover { color: #b8ecfb; }
+.atlas-nav-links .ant-btn { border-color: rgba(225, 239, 248, .5); color: #f6f9fc; }
+.atlas-nav-links .ant-btn:hover { border-color: #e7f8ff !important; background: rgba(255,255,255,.1) !important; color: #fff !important; }
+.atlas-hero-copy h1 { color: #fff; text-shadow: 0 3px 28px rgba(0, 0, 0, .38); }
+.atlas-eyebrow { color: #a9e8fa; }
+.atlas-hero-lede { color: #c6d1da; text-shadow: 0 2px 14px rgba(0, 0, 0, .48); }
+.atlas-hero-actions .ant-btn { background: #e8f7fc; color: #0d2438; box-shadow: 0 10px 30px rgba(1, 9, 18, .45), 0 0 28px rgba(141, 222, 248, .2); }
+.atlas-hero-actions .ant-btn:hover { background: #fff !important; color: #0d2438 !important; }
+.atlas-quiet-action { color: #d8e7ed; }.atlas-proof { color: #b8c4cb; }
+.atlas-route-stage { border-color: rgba(224, 243, 252, .33); background: rgba(4, 16, 29, .43); box-shadow: 0 28px 70px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter: blur(14px) saturate(1.1); }
+.atlas-map-texture { background: radial-gradient(circle at 74% 25%, rgba(127, 202, 235, .18), transparent 29%), linear-gradient(135deg, rgba(7, 22, 36, .68), rgba(5, 16, 29, .38)); }
+.atlas-grid { opacity: .28; background-image: linear-gradient(rgba(209, 239, 249, .18) 1px, transparent 1px), linear-gradient(90deg, rgba(209, 239, 249, .18) 1px, transparent 1px); }
+.atlas-contour { border-color: rgba(184, 228, 245, .28); }
+.atlas-stage-topline { color: #b5cbd7; }.atlas-stage-topline button { color: #b7ecfb; }.atlas-route-title { color: #f3fbff; text-shadow: 0 2px 13px rgba(0,0,0,.45); }
+.atlas-route-shadow { stroke: rgba(1, 9, 18, .63); }.atlas-route-line { stroke: #b8f0ff; filter: drop-shadow(0 0 8px rgba(144, 227, 249, .72)); }
+.atlas-stop { color: #e9f7fc; }.atlas-stop-dot { border-color: #b8f0ff; background: #0c263b; color: #cefbff; box-shadow: 0 0 0 5px rgba(8, 30, 46, .65), 0 0 21px rgba(124, 216, 242, .35); }.atlas-stop-3 .atlas-stop-dot { border-color: #e6fbff; background: #9ad9ee; color: #082039; }.atlas-stop-time { color: #b0c3cc; }
+.atlas-route-note { border-color: rgba(225, 244, 253, .32); background: rgba(8, 28, 44, .74); box-shadow: 0 14px 35px rgba(0,0,0,.3); }.atlas-route-note strong { color: #f1fbff; }.atlas-route-note small { color: #b5c9d2; }.atlas-note-pin { background: #a6eafb; box-shadow: 0 0 0 4px rgba(113, 208, 240, .18); }
+.atlas-route-summary { border-top-color: rgba(213, 237, 247, .2); background: rgba(5, 19, 33, .64); }.atlas-route-summary strong { color: #f0faff; }.atlas-route-summary span { color: #aec3ce; }.atlas-hero-footer { color: #a3b5be; }
+
 .onboarding-tooltip-header {
   margin-bottom: 8px;
 }
