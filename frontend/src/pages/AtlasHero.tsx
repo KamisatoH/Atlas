@@ -64,10 +64,7 @@ export function AtlasHero() {
         <div className="atlas-hero-copy">
           <p className="atlas-eyebrow"><span />智能行程规划</p>
           <h1 id="atlas-hero-title">把想去的地方，<br />排成走得通的旅程。</h1>
-          <p className="atlas-hero-lede">
-            告诉 Atlas 目的地、天数和偏好。它会先帮你排出一条可执行的路线，
-            你再随时回到地图和日程里调整。
-          </p>
+          <p className="atlas-hero-lede">全世界的水都将重逢</p>
           <div className="atlas-hero-actions">
             <Button type="primary" size="large" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/workspace')}>
               开始规划行程
