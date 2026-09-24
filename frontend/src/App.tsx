@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { MapWorkspace } from '@/pages/MapWorkspace';
+import { AtlasHero } from '@/pages/AtlasHero';
 
 export default function App() {
   return (
@@ -49,7 +50,8 @@ export default function App() {
     >
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<MapWorkspace />} />
+          <Route path="/" element={<AtlasHero />} />
+          <Route path="/workspace" element={<MapWorkspace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
