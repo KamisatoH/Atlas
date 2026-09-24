@@ -759,6 +759,17 @@ body {
   padding: 8px !important;
 }
 
+/* 外层承载原生横向滚动，避免 Ant Table 在面板尺寸变化后丢失内部滑块。 */
+.day-stops-scroll {
+  scrollbar-gutter: stable;
+  overscroll-behavior-x: contain;
+}
+
+.day-stops-table .ant-table-body {
+  overflow-x: hidden !important;
+  scrollbar-gutter: stable;
+}
+
 .trip-panel .trip-stops-section {
   min-height: 280px;
 }

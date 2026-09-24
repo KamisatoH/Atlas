@@ -379,7 +379,7 @@ export function MapWorkspace() {
         (dateLabel ? `${dateLabel} 行程` : days[targetDayIndex]?.title ?? `第 ${targetDayIndex + 1} 天`);
 
       const entry = await prepareAgentDayEntry(plan, resolved, targetDayIndex, dayTitle);
-      if (!entry.schedule.feasible) {
+      if (!entry.schedule.feasible && (options?.replanAttempt ?? 0) < 1) {
         return {
           status: 'needs-replan',
           replan: buildReplanContext([entry], (options?.replanAttempt ?? 0) + 1),
@@ -449,7 +449,7 @@ export function MapWorkspace() {
       }
 
       const conflicting = entries.filter((entry) => !entry.schedule.feasible);
-      if (conflicting.length) {
+      if (conflicting.length && replanAttempt < 1) {
         return {
           status: 'needs-replan',
           replan: buildReplanContext(entries, replanAttempt + 1),
@@ -677,7 +677,10 @@ export function MapWorkspace() {
             mode={plannerMode}
             onModeChange={setPlannerMode}
           >
-            {plannerMode === 'ai' ? (
+            <div
+              className={plannerMode === 'ai' ? 'flex min-h-0 flex-1' : 'hidden'}
+              aria-hidden={plannerMode !== 'ai'}
+            >
               <FreeAgentPanel
                 planStartDate={planStartDate}
                 day={day}
@@ -696,7 +699,11 @@ export function MapWorkspace() {
                 onGenerationFailed={clearRouteGeneration}
                 embedded
               />
-            ) : (
+            </div>
+            <div
+              className={plannerMode === 'manual' ? 'flex min-h-0 flex-1' : 'hidden'}
+              aria-hidden={plannerMode !== 'manual'}
+            >
               <TripPanel
                 planStartDate={planStartDate}
                 days={days}
@@ -717,8 +724,9 @@ export function MapWorkspace() {
                 onTransportCompare={(from, to) => setTransportPair({ from, to })}
                 onReorderStops={handleReorderStops}
                 embedded
+                visible={plannerMode === 'manual'}
               />
-            )}
+            </div>
           </AgentAssistantShell>
         </div>
 

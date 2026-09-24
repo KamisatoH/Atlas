@@ -2,7 +2,9 @@ import { Router } from 'express';
 import {
   type AgentChatContext,
   buildAgentSystemPrompt,
+  resolveAgentPromptMode,
 } from '../lib/agentPrompts';
+import { getServerClarification, type ServerClarification } from '../lib/clarificationFlow';
 import { LlmParseError, parseAssistantJson, extractAssistantText } from '../lib/llmJson';
 import { authRequired } from '../middleware/auth';
 import { aiRateLimit } from '../middleware/aiRateLimit';
@@ -51,13 +53,7 @@ type AgentItineraryMeta = {
   totalDays?: number;
 };
 
-type ClarificationField = 'pace' | 'interest' | 'transport' | 'companions' | 'budget' | 'startArea' | 'accommodation' | 'arrival';
-type AgentClarification = {
-  field: ClarificationField;
-  question: string;
-  options: Array<{ value: string; label: string; description?: string; requiresDetail?: boolean; detailPlaceholder?: string }>;
-  allowSkip?: boolean;
-};
+type AgentClarification = ServerClarification;
 type ChatPayload = {
   reply: string;
   source: 'openai';
@@ -91,6 +87,19 @@ aiRouter.post('/chat', aiAuthIfRequired, aiRateLimit, async (req, res) => {
 
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: 'messages 无效' });
+    return;
+  }
+
+  const clarification = getServerClarification(messages, context);
+  if (clarification) {
+    res.json({
+      reply: '先确认一个会明显影响路线的安排。',
+      source: 'openai',
+      clarification,
+      plan: null,
+      plans: null,
+      itinerary: null,
+    } satisfies ChatPayload);
     return;
   }
 
@@ -156,7 +165,8 @@ async function chatWithOpenAI(
   compact = false
 ): Promise<ChatPayload> {
   const client = createLlmClient(apiKey);
-  let sys = buildAgentSystemPrompt(context);
+  const promptMode = resolveAgentPromptMode(messages, context);
+  let sys = buildAgentSystemPrompt(context, promptMode);
   if (compact) {
     sys +=
       '\n\n# 压缩模式\n上次输出过长被截断。请用更精简内容重新输出**完整** JSON：保留每一天满足时间预算所需的核心景点、餐食与住宿节点；note 10～15 字，仍须 plans.length === totalDays。';
@@ -175,7 +185,6 @@ async function chatWithOpenAI(
   const choice = completion.choices[0];
   let parsed: {
     reply?: string;
-    clarification?: unknown;
     plan?: AgentTripPlan | null;
     plans?: AgentTripPlan[] | null;
     itinerary?: AgentItineraryMeta | null;
@@ -281,48 +290,15 @@ function mergeMultiDayPlans(
   return fromArray.map((p, i) => ({ ...p, dayIndex: i }));
 }
 
-function normalizeClarification(raw: unknown, context: AgentChatContext | undefined): AgentClarification | null {
-  if (context?.replan || context?.skipClarification || (context?.clarificationCount ?? 0) >= 3 || !raw || typeof raw !== 'object') return null;
-  const item = raw as { field?: unknown; question?: unknown; options?: unknown; allowSkip?: unknown };
-  const fields = new Set<ClarificationField>(['pace', 'interest', 'transport', 'companions', 'budget', 'startArea', 'accommodation', 'arrival']);
-  const field = String(item.field ?? '') as ClarificationField;
-  if (!fields.has(field) || context?.clarificationAnswers?.[field]) return null;
-  const question = String(item.question ?? '').trim();
-  if (!question || question.length > 80 || !Array.isArray(item.options)) return null;
-  const options = item.options
-    .map((option) => {
-      const value = String(option?.value ?? '').trim();
-      const label = String(option?.label ?? '').trim();
-      const description = String(option?.description ?? '').trim();
-      const requiresDetail = option?.requiresDetail === true;
-      const detailPlaceholder = String(option?.detailPlaceholder ?? '').trim();
-      if (!value || !label || value.length > 40 || label.length > 24) return null;
-      return {
-        value,
-        label,
-        ...(description ? { description: description.slice(0, 48) } : {}),
-        ...(requiresDetail ? { requiresDetail: true } : {}),
-        ...(requiresDetail && detailPlaceholder ? { detailPlaceholder: detailPlaceholder.slice(0, 60) } : {}),
-      };
-    })
-    .filter((option): option is AgentClarification['options'][number] => option != null);
-  if (options.length < 2 || options.length > 4 || new Set(options.map((option) => option.value)).size !== options.length) return null;
-  return { field, question, options, allowSkip: item.allowSkip !== false };
-}
 function normalizeChatPayload(
   parsed: {
     reply?: string;
-    clarification?: unknown;
     plan?: AgentTripPlan | null;
     plans?: AgentTripPlan[] | null;
     itinerary?: AgentItineraryMeta | null;
   },
   context: AgentChatContext | undefined
 ): ChatPayload {
-  const clarification = normalizeClarification(parsed.clarification, context);
-  if (clarification) {
-    return { reply: String(parsed.reply ?? '先确认一个偏好。'), source: 'openai', clarification, plan: null, plans: null, itinerary: null };
-  }
   const activeDayIndex = context?.activeDayIndex;
   const fallbackPace = paceFromContext(context);
   const mergedMulti = mergeMultiDayPlans(parsed, activeDayIndex, fallbackPace);

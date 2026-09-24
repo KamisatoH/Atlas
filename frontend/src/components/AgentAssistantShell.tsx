@@ -11,7 +11,7 @@ export type AgentAssistantShellProps = {
 };
 
 /**
- * Atlas 的统一规划工作台：AI 先给出方案，自主规划用于查看、补充和细调。
+ * Atlas 的统一规划工作台：AI 先给出方案，行程页用于查看、补充和细调。
  * 两种方式共享同一份地图与行程状态，避免成为互相割裂的入口。
  */
 export function AgentAssistantShell({ mode, onModeChange, children }: AgentAssistantShellProps) {
@@ -31,7 +31,7 @@ export function AgentAssistantShell({ mode, onModeChange, children }: AgentAssis
             </Text>
           </div>
         </div>
-        <div className="planner-mode-switch" role="tablist" aria-label="规划方式">
+        <div className="planner-mode-switch" role="tablist" aria-label="行程规划视图">
           <button
             type="button"
             role="tab"
@@ -51,7 +51,7 @@ export function AgentAssistantShell({ mode, onModeChange, children }: AgentAssis
             onClick={() => onModeChange('manual')}
           >
             <CalendarOutlined />
-            自主规划
+            行程
           </button>
         </div>
       </div>

@@ -42,6 +42,7 @@ export function TripPanel({
   onTransportCompare,
   onReorderStops,
   embedded = false,
+  visible = true,
 }: {
   planStartDate: string | null;
   days: DayPlan[];
@@ -63,6 +64,8 @@ export function TripPanel({
   onReorderStops: (fromIndex: number, toIndex: number) => void;
   /** 嵌入统一规划工作台时使用，去掉外层卡片样式。 */
   embedded?: boolean;
+  /** 作为标签页显示时传入，供表格恢复横向滚动布局。 */
+  visible?: boolean;
 }) {
   return (
     <div
@@ -76,11 +79,11 @@ export function TripPanel({
         <div className="flex items-center justify-between gap-2">
           {!embedded ? (
             <Text strong className="text-base text-slate-800">
-              行程规划
+              行程
             </Text>
           ) : (
             <Text strong className="section-title text-sm">
-              编辑日程
+              行程
             </Text>
           )}
           <Button size="small" type="default" className="add-day-btn" icon={<PlusOutlined />} onClick={onAddDay}>
@@ -125,7 +128,7 @@ export function TripPanel({
             />
           </div>
 
-          <Text className="field-label mb-1.5 block">编辑的天</Text>
+          <Text className="field-label mb-1.5 block">选择日期</Text>
           <div className="day-chip-row mb-3 flex flex-wrap gap-1.5">
             {days.map((d, i) => {
               const cal = planDayLabel(planStartDate, d.dayIndex);
@@ -191,6 +194,7 @@ export function TripPanel({
             onRemoveStop={onRemoveStop}
             onTransportCompare={onTransportCompare}
             onReorderStops={onReorderStops}
+            visible={visible}
           />
         )}
       </div>

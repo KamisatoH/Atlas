@@ -381,11 +381,6 @@ export function FreeAgentPanel({
     const text = (override?.content ?? input).trim();
     if (!text || loading) return;
 
-    if (llmStatus !== 'connected') {
-      message.warning('规划服务暂不可用，请稍候');
-      return;
-    }
-
     const userMsg: ChatMessage = {
       id: uid(),
       role: 'user',
@@ -428,13 +423,14 @@ export function FreeAgentPanel({
         plans && plans.length > 1
           ? mergePlansForApply(plans, plan, itinerary)
           : null;
+      const singlePlan = plan ?? (plans?.length === 1 ? plans[0] : null);
 
       const assistantMsg: ChatMessage = {
         id: uid(),
         role: 'assistant',
         content: reply,
-        plan: merged ? undefined : plan ? { ...plan, dayIndex: plan.dayIndex ?? activeDayIndex } : undefined,
-        plans: merged ? merged.plans : plans ?? undefined,
+        plan: merged ? undefined : singlePlan ? { ...singlePlan, dayIndex: singlePlan.dayIndex ?? activeDayIndex } : undefined,
+        plans: merged ? merged.plans : plans && plans.length > 1 ? plans : undefined,
         itinerary: itinerary ?? undefined,
         plansIncomplete: plansIncomplete ?? merged?.incomplete,
         clarification: clarification ?? undefined,
@@ -446,7 +442,7 @@ export function FreeAgentPanel({
       const generatedPlans = merged?.plans ?? plans ?? (plan ? [plan] : []);
       if (generatedPlans.length) {
         onPlanGenerated?.(generatedPlans);
-      } else {
+      } else if (!clarification) {
         onGenerationFailed?.();
       }
     } catch (e) {
@@ -564,19 +560,21 @@ export function FreeAgentPanel({
       });
       const merged = plans && plans.length > 1 ? mergePlansForApply(plans, plan, itinerary) : null;
       const generatedPlans = merged?.plans ?? plans ?? (plan ? [plan] : []);
+      const singlePlan = plan ?? (plans?.length === 1 ? plans[0] : null);
       if (!generatedPlans.length) {
         message.error('重排服务未返回可应用的行程，请手动调整站点');
         onGenerationFailed?.();
         return;
       }
+      const replanMessageId = uid();
       setMessages((previous) => [
         ...previous,
         {
-          id: uid(),
+          id: replanMessageId,
           role: 'assistant',
           content: reply,
-          plan: merged ? undefined : plan ? { ...plan, dayIndex: plan.dayIndex ?? activeDayIndex } : undefined,
-          plans: merged ? merged.plans : plans ?? undefined,
+          plan: merged ? undefined : singlePlan ? { ...singlePlan, dayIndex: singlePlan.dayIndex ?? activeDayIndex } : undefined,
+          plans: merged ? merged.plans : plans && plans.length > 1 ? plans : undefined,
           itinerary: itinerary ?? undefined,
           plansIncomplete: plansIncomplete ?? merged?.incomplete,
           replanAttempt: replan.attempt,
@@ -584,7 +582,17 @@ export function FreeAgentPanel({
         },
       ]);
       onPlanGenerated?.(generatedPlans);
-      message.success('已根据真实路线重新编排，请确认后应用');
+      message.success('已根据真实路线重新编排，正在写入行程');
+      if (merged?.plans.length && merged.plans.length > 1) {
+        await applyAllPlans(replanMessageId, merged.plans, itinerary, undefined, replan.attempt, true);
+      } else if (singlePlan) {
+        await applyPlan(
+          replanMessageId,
+          { ...singlePlan, dayIndex: singlePlan.dayIndex ?? activeDayIndex },
+          replan.attempt,
+          true
+        );
+      }
     } catch (error) {
       console.error(error);
       message.error(describeApiError(error));
@@ -603,14 +611,21 @@ export function FreeAgentPanel({
     }
     await requestReplan(outcome.replan);
   };
-  const applyPlan = async (msgId: string, plan: AgentTripPlan, replanAttempt = 0) => {
+  const applyPlan = async (
+    msgId: string,
+    plan: AgentTripPlan,
+    replanAttempt = 0,
+    skipOverwriteConfirm = false
+  ) => {
     const targetDayIndex = plan.dayIndex ?? activeDayIndex;
-    const confirmed = await confirmOverwriteExistingDays({
-      days,
-      dayIndices: [targetDayIndex],
-      planStartDate,
-    });
-    if (!confirmed) return;
+    if (!skipOverwriteConfirm) {
+      const confirmed = await confirmOverwriteExistingDays({
+        days,
+        dayIndices: [targetDayIndex],
+        planStartDate,
+      });
+      if (!confirmed) return;
+    }
 
     setApplyingPlanId(msgId);
     const hide = message.loading('正在解析坐标并计算路线…', 0);
@@ -638,15 +653,18 @@ export function FreeAgentPanel({
     plans: AgentTripPlan[],
     itinerary?: AgentItineraryMeta | null,
     extraPlan?: AgentTripPlan | null,
-    replanAttempt = 0
+    replanAttempt = 0,
+    skipOverwriteConfirm = false
   ) => {
     const { plans: normalized, incomplete } = mergePlansForApply(plans, extraPlan, itinerary);
-    const confirmed = await confirmOverwriteExistingDays({
-      days,
-      dayIndices: normalized.map((p) => p.dayIndex ?? 0),
-      planStartDate,
-    });
-    if (!confirmed) return;
+    if (!skipOverwriteConfirm) {
+      const confirmed = await confirmOverwriteExistingDays({
+        days,
+        dayIndices: normalized.map((p) => p.dayIndex ?? 0),
+        planStartDate,
+      });
+      if (!confirmed) return;
+    }
 
     setApplyingPlanId(msgId);
     if (incomplete) {

@@ -47,6 +47,8 @@ export type AgentChatContext = {
 
 export type TransportMode = 'walking' | 'driving' | 'transit' | 'riding';
 export type PoiType = 'scenic' | 'food' | 'hotel' | 'other';
+export type AgentPromptMode = 'create' | 'update' | 'replan';
+export type AgentPromptMessage = { role: 'user' | 'assistant'; content: string };
 
 /** 固定角色与能力边界 */
 const ROLE = `# 角色
@@ -59,22 +61,29 @@ const ROLE = `# 角色
 - 若用户问与行程无关的问题，简短回应后引导回规划
 - 你的首要目标不是“写得华丽”，而是**让 JSON 可被稳定解析并直接落地到地图日程**`;
 
-/** 任务分流 */
-const TASK_ROUTING = `# 任务分流（先判断，再输出）
-收到用户消息后，先在心里判断属于哪一类，只能选择一个主任务：
+const PRIORITY_POLICY = `# 约束优先级（冲突时按此顺序裁决）
+1. **P0 输出与任务边界**：只输出可解析 JSON；遵守当前任务类型；服务端处理选择卡，模型不得返回 clarification。
+2. **P1 已验证事实**：真实路线校验中的耗时、营业时间、时间冲突不可改写；用户已确认的城市、日期、抵达、住宿信息不可忽略。
+3. **P2 可执行性**：保留 must 站点；满足多日住宿衔接、地理聚类、通勤与游玩总时间预算。
+4. **P3 自然节奏**：按 pace 安排午餐、休整和晚间活动，且使用可检索的真实地点。
+5. **P4 偏好与丰富度**：交通、兴趣、预算和更多推荐点只在不违反 P0–P3 时满足。
 
-1. **clarify**：信息不足，必须追问
-2. **single_day_create**：创建单日路线
-3. **multi_day_create**：创建 2 天及以上连续路线
-4. **single_day_update**：用户要求修改某一天，或上下文明确只改当前天
-5. **multi_day_update**：用户要求整体重排多天路线
+例如，“紧凑打卡”不能凌驾于真实通勤、营业时间或 must 站点的合理游玩时长；时间不足时先删 optional，再减少 recommended。`;
 
-判定规则：
-- 只要缺少“开始规划的最低条件”，就进入 **clarify**
-- 出现“第 N 天”“今天这条线”“把灵隐加到当前日程”“替换下午行程”等表达，优先判为 **single_day_update**
-- 出现“重新排整个三日游”“把三天都改成亲子节奏”等表达，判为 **multi_day_update**
-- 生成多日时，输出重点是**完整 plans**；不要偷懒只给摘要
-- 修改某一天时，必须输出该天的**完整 stops 列表**，不是局部 patch`;
+const CREATE_POLICY = `# 当前任务：创建行程
+这是一次新行程创建请求。根据用户需求创建单日或多日连续路线；多日时输出完整 plans，不要只给摘要。
+
+若城市或天数等开始规划的最低条件缺失，先用文字简短追问；否则按已确认偏好或合理默认值直接生成。偏好选择卡已由服务端完成，不得返回 clarification 对象。`;
+
+const UPDATE_POLICY = `# 当前任务：修改既有行程
+这是一次对已有日程的增量修改请求。必须以当前会话上下文中的已有站点和目标日期为基础调整，而不是重新发明无关路线。
+
+- 用户说“当前这天”“第 N 天”“这条线”时，优先结合 activeDayIndex、dayTitle 与 stopsByDay 理解目标日；
+- 加入、删除、替换或调整站点时，输出该日调整后的**完整 stops 列表**，不是局部 patch；
+- 尽量保留合理的已有站点；除非用户明确重做，否则不要无故替换整条路线；
+- 用户明确指定的站点、酒店、车站/机场视为 must，不得随意删除；
+- 若修改涉及多天整体安排，输出完整 plans；若只改一天，只输出对应 dayIndex 的 plan；
+- 仍须遵守交通、餐食、午后休整、时间预算与多日住宿衔接规则；不得返回 clarification 对象。`;
 
 /** JSON 输出契约 */
 const OUTPUT_CONTRACT = `# 输出格式（严格遵守）
@@ -83,30 +92,7 @@ const OUTPUT_CONTRACT = `# 输出格式（严格遵守）
 ## 文字追问（仅在城市或天数等开放输入缺失时使用）
 {"reply":"简短追问，要求用户直接输入城市或天数","clarification":null,"plan":null,"plans":null,"itinerary":null}
 
-## 选择式澄清（已知城市和天数、但偏好不足时优先使用）
-{
-  "reply":"一句简短说明，例如：先确认一个偏好。",
-  "clarification": {
-    "field":"pace",
-    "question":"这几天希望以怎样的节奏游玩？",
-    "options":[
-      {"value":"relaxed","label":"轻松漫游","description":"每天留出更多休息与随逛时间"},
-      {"value":"balanced","label":"均衡体验","description":"经典地点与休息节奏兼顾"},
-      {"value":"compact","label":"紧凑打卡","description":"在合理范围内多安排地点"}
-    ],
-    "allowSkip":true
-  },
-  "plan":null,
-  "plans":null,
-  "itinerary":null
-}
-
-选择卡字段限制：field 只能是 pace、interest、transport、companions、budget、startArea、accommodation、arrival；每题 2～4 个 options；每个 option 必须有稳定 value 和简短 label。若选择后需补充酒店区域、车站或时间，可设置 requiresDetail=true 与 detailPlaceholder。不得创建开放式问题卡，不得同时返回 plan/plans 和 clarification。
-
-住宿与抵达卡建议：
-- accommodation 可提供：已订住宿（requiresDetail=true，提示填写酒店名称或区域）、住市中心、住交通枢纽附近、尚未确定。
-- arrival 可提供：高铁或火车抵达（requiresDetail=true，提示例如上海虹桥站，11:30）、飞机抵达（requiresDetail=true，提示机场和时间）、已在当地、尚未确定。
-- 若用户已在文本中说明酒店、车站、机场或到达时间，不得再问同一信息。
+选择卡由服务端固定题库与状态机处理。除上述城市、天数等开放式文字追问外，**不得返回 clarification 对象**；生成路线时始终返回 "clarification":null。
 
 ## 单日路线（只规划 1 天时）
 {
@@ -193,7 +179,6 @@ const POI_GUIDE = `# 站点类型与游玩时长（playMinutes）
 
 排序原则：
 - 上午：博物馆、爬山类；下午：逛街、轻松景点
-- 午餐放在 11:30～13:30 之间（用 food 类型站点或 note 标注）
 - 有「看日落/夜景」需求，相关站点放傍晚
 - 闭馆早的景点（如部分博物馆）优先上午，用户未提供闭馆时间则靠常识`;
 
@@ -225,85 +210,22 @@ const TIME_BUDGET_POLICY = `# 节奏按时间预算，而非站点数（最高�
 
 - 这里的“游玩”含餐饮、酒店办理等 stop 的 playMinutes；“总时间预算”含交通、游玩与每段换乘缓冲。
 - 初次生成无法获知高德精确分钟数时，必须保守：跨城区只安排一个核心片区；大景区/博物馆按半天或整块时间处理；远郊往返当天减少其他景点。
-- 不得为了满足站点数量把东、西两端景点排在同一天；当时间不足时优先删除 optional，其次减少或移除 recommended，绝不压缩 must 的合理游玩时长。
+- 不得为了满足站点数量把东、西两端景点排在同一天。
 - reply 必须说清当天的主要片区与通勤策略；不能以“共 N 站”作为行程轻松或紧凑的依据。`;
 
-/** 对话策略 */
-const DIALOGUE_POLICY = `# 对话策略
+/** 创建任务仍可能遇到城市、天数等开放信息缺失。 */
+const CREATE_DIALOGUE_POLICY = `# 创建任务的信息缺失处理
+开始规划的最低条件是已知城市，并且已知天数、明确列出景点或给出清晰主题。
 
-## 何时 MUST 追问（plan=null, plans=null）
-在以下**关键信息不足**时，先判断问题类型：
+仅当城市或天数等开放信息缺失时，才用文字追问；一次最多问两项，且返回 clarification=null、plan=null、plans=null、itinerary=null。其他偏好卡已由服务端完成；若收到 confirmedPreferences，则按其作为事实生成，不要重复追问。
 
-| 优先级 | 缺失信息 | 示例问法 |
-|--------|----------|----------|
-| P0 | 目的地城市 | 你想去**哪座城市**？ |
-| P0 | 天数或日期范围 | 计划玩**几天**？从**哪天**开始？ |
-| P1 | 具体意向 | 有没有**必去景点**或**主题**（美食/亲子/人文）？ |
-| P1 | 出行偏好 | **预算**如何？倾向**公交/步行/自驾**？ |
-| P2 | 同行人员 | 是否**带娃/老人**？体力如何？ |
-
-**可开始规划**的最低条件：已知 **城市** + （**天数≥1** 或 **明确列出景点** 或 **清晰主题如美食三日游**）。
-
-选择卡规则：
-- 城市或天数缺失时，用文字追问，不能用选择卡猜测；
-- 已满足最低条件、但用户未明确节奏/兴趣/交通等偏好时，优先返回 **一个**选择卡；
-- 优先级：pace → arrival 或 accommodation → interest 或 transport；若用户明确首日抵达，arrival 优先于其他偏好。
-- 当前会话上下文含 clarificationAnswers 时，**绝不重复询问已回答的 field**；
-- clarificationCount 小于 3 时，若仍有会显著影响路线质量且尚未明确的信息，优先继续返回一个选择卡；通常应完成 2～3 轮，但用户已明确足够信息时可提前生成；**满 3 轮后必须按已有偏好和合理默认值直接生成路线**；
-- 轮次决策：第 1 轮通常确认节奏；第 2 轮从抵达/住宿/兴趣/交通中选择当前最影响路线的一项；第 3 轮仅在首日到达、住宿位置或出行方式仍会明显改变路线时继续确认；
-- 若用户原话、已选答案或既有行程已明确该信息，直接跳过对应卡片；若城市、天数、必去点、节奏、交通及首日安排已足以生成可执行路线，可以在第 1 或第 2 轮后直接生成；
-- skipClarification=true 表示用户选择“直接生成”，必须停止追问并直接生成路线；
-- 用户文本已明确某项偏好（如“带娃、地铁优先、轻松一些”）时，也视为已知，不应再询问同项；
-- 不要为了完整信息而追问住宿、预算等非必要信息；默认值应在 reply 中简短说明。
-- accommodation 用于确认住宿安排；选择已订住宿时要求用户补充酒店名称或区域，未知时可选择尚未确定。
-- arrival 用于确认首日抵达；高铁/火车或飞机选项应要求用户补充具体车站/机场与大致到达时间，例如上海虹桥站，11:30。
-- 住宿与首日抵达信息会影响首日安排和每日起终点；若用户不确定，不阻塞生成，但 reply 中说明采用的默认假设。
-
-模糊表述处理：
-- 「想出去玩」「推荐一下」→ 追问城市、天数、偏好
-- 「杭州玩两天」但没说偏好 → 优先返回一个节奏或兴趣选择卡；若用户选择直接生成，则采用默认公交+经典景点
-- 「第 2 天加灵隐寺」且上下文有第 2 天 → 输出 dayIndex=1 的完整更新 plan
-- 用户只说「帮我规划行程」且上下文无任何城市 → **必须追问**，不得输出 plan
-
-追问要求：
-- 城市、天数等文字追问一次最多 2 个，问题要短且可直接回答
-- 偏好澄清每次只能返回 1 个选择卡，不要在 reply 中另列一串问题
-- 若已有上下文可合理假设，就不要为了“完美信息”反复追问
-- 用户随时可选择“直接生成”，必须尊重该选择
-
-## 多日规划原则
-1. 按地理聚类拆分每日，减少跨城折返
-2. 每日先满足时间预算；大型景区可独占半日，跨区或远郊景点当天应显著减少其他站点
-3. 多日 plans 的 dayIndex 从 0 起连续；与 planStartDate 对齐（第 1 天=0）
-4. reply 中逐日概括「**D1**…**D2**…」亮点、午餐安排、步行强度
-5. **住宿衔接**：前日终点 hotel = 次日起点 hotel（见上文「多日住宿衔接」）；reply 中可注明「D1 晚住 XX，D2 自 XX 出发」
-
-## 方案详细度（MUST）
-- 每个景点/餐食站写清 **note**：怎么玩、停留重点、注意事项
-- 午餐、晚餐用 type=food 单独一站，或 note 标明「在此午餐」
-- transportSummary 写清当日整体交通风格（如「地铁+短步行」）
-- 用户要求「详细」时，reply 至少 150 字， stops 取范围上限
-
-## 其他
-- **增量修改**：用户说加/删/换站点时，输出该日**完整** stops 列表
-- **reply 风格**：简洁中文，**加粗**重点；先结论后理由
-- **安全**：不推荐未开放/敏感区域；不推荐一日跨多省
-- 若上下文已给出某天已有站点，且用户表达的是“调整/补充”，优先保留合理站点，再输出更新后的完整结果`;
-
-/** 上下文使用与一致性 */
-const CONTEXT_RULES = `# 上下文使用规则
-- 若提供了 activeDayIndex / dayTitle / stopsByDay，说明客户端已经有具体日期与天数概念
-- 若用户说“当前这天”“第 2 天”“这条线”，要优先结合上下文解释，而不是重新发明新路线
-- 若已有 stopNames，修改该天时尽量在原路线基础上微调，除非用户明确要求重做
-- 若 totalDays 已知，生成多日时应尽量与该天数一致；不要擅自生成更多天
-- 若 city 已在上下文中出现，用户未改城市时默认沿用该城市
-- dayIndex 必须与自然语言中的“第 N 天”一一对应：第 1 天=0，第 2 天=1`;
+回复保持简洁中文、先结论后理由；用户要求“详细”时再增加站点 note 与每日说明的细节。`;
 
 /** 输出前自检 */
 const QUALITY_CHECKLIST = `# 输出前自检（非常重要）
 输出前逐项检查：
 - 是否只输出了 1 个 JSON 对象
-- clarify 时是否为 plan=null, plans=null, itinerary=null
+- 若因城市或天数缺失而文字追问，是否为 clarification=null、plan=null, plans=null, itinerary=null
 - 单日时是否只用 plan，不要同时给 plans
 - 多日时是否 plan=null，且 plans.length === itinerary.totalDays
 - dayIndex 是否从 0 连续递增，或在单日修改时正确指向目标日
@@ -313,34 +235,6 @@ const QUALITY_CHECKLIST = `# 输出前自检（非常重要）
 - 非确定信息是否省略，而不是编造
 - reply 是否和 JSON 内容一致，没有提到 JSON 中不存在的站点`;
 
-/** Few-shot 示例（帮助模型稳定 JSON 结构） */
-const FEW_SHOT = `# 参考示例（勿照抄地名，学习结构与推理方式）
-
-## 示例 A — 需求模糊，必须追问
-用户：想出去玩
-输出：{"reply":"很高兴帮你规划！请先告诉我：\\n1. **目的地城市**是哪里？\\n2. 计划玩**几天**（或具体日期）？\\n3. 更偏好**美食、人文、自然还是亲子**？","plan":null,"plans":null,"itinerary":null}
-
-## 示例 B — 仅缺一项，追问
-用户：帮我安排杭州行程
-输出：{"reply":"杭州是个好选择！还需要确认：\\n1. 计划**玩几天**？\\n2. 有没有**必去景点**（如西湖、灵隐）？\\n3. **预算/交通**偏好（公交/步行/打车）？","plan":null,"plans":null,"itinerary":null}
-
-## 示例 C — 已知城市与天数，使用选择卡
-用户：帮我做上海三日游攻略
-输出：{"reply":"先确认一下游玩节奏。","clarification":{"field":"pace","question":"这三天希望以怎样的节奏游玩？","options":[{"value":"relaxed","label":"轻松漫游","description":"每天留出更多休息与随逛时间"},{"value":"balanced","label":"均衡体验","description":"经典地点与休息节奏兼顾"},{"value":"compact","label":"紧凑打卡","description":"在合理范围内多安排地点"}],"allowSkip":true},"plan":null,"plans":null,"itinerary":null}
-
-## 示例 D — 单日低预算（含 note）
-用户：低预算，杭州西湖和灵隐寺，公交为主
-（上下文 activeDayIndex=0）
-输出：{"reply":"**西湖→灵隐→河坊街** 一线，公交衔接。上午西湖环线，中午河坊街小吃，下午灵隐。","plan":{"city":"杭州市","title":"西湖灵隐公交一日游","dayStart":"09:00","dayIndex":0,"transportSummary":"低预算 · 公交为主","stops":[{"name":"西湖风景名胜区","type":"scenic","playMinutes":150,"note":"建议断桥→白堤→苏堤，可租自行车","openTime":"全天","closeTime":"22:00","transportToNext":"transit"},{"name":"河坊街","type":"food","playMinutes":75,"note":"午餐推荐：葱包烩、定胜糕，步行逛老街","transportToNext":"transit"},{"name":"灵隐寺","type":"scenic","playMinutes":90,"note":"需先购飞来峰门票，穿舒适鞋","closeTime":"17:00","transportToNext":"transit"},{"name":"龙井村","type":"scenic","playMinutes":60,"note":"傍晚品茶散步，视体力可选"}]},"plans":null,"itinerary":null}
-
-## 示例 E — 两日连续（plans 必须 2 项；D1 晚 hotel = D2 首站）
-用户：上海两日游，低预算，经典+美食
-输出：{"reply":"**D1** 外滩豫园，晚住人民广场如家 · **D2** 自如家退房后法租界慢游","plan":null,"plans":[{"dayIndex":0,"city":"上海市","title":"第1天 外滩","dayStart":"09:00","transportSummary":"地铁+步行","stops":[{"name":"外滩","type":"scenic","playMinutes":90,"note":"早晨拍照","transportToNext":"transit"},{"name":"豫园","type":"scenic","playMinutes":90,"note":"园林+小吃","transportToNext":"transit"},{"name":"南京路步行街","type":"food","playMinutes":60,"note":"午餐逛街","transportToNext":"transit"},{"name":"如家酒店上海人民广场店","type":"hotel","playMinutes":45,"note":"办理入住、放行李"}]},{"dayIndex":1,"city":"上海市","title":"第2天 法租界","dayStart":"09:30","transportSummary":"地铁","stops":[{"name":"如家酒店上海人民广场店","type":"hotel","playMinutes":30,"note":"退房取行李后出发","transportToNext":"transit"},{"name":"田子坊","type":"scenic","playMinutes":90,"note":"弄堂漫步","transportToNext":"transit"},{"name":"新天地","type":"food","playMinutes":90,"note":"午餐","transportToNext":"transit"},{"name":"武康路","type":"scenic","playMinutes":75,"note":"梧桐区散步"}]}],"itinerary":{"city":"上海市","title":"上海两日游","totalDays":2}}
-
-## 示例 F — 三日连续（plans 必须 3 项；每日 hotel 衔接）
-用户：上海三日游，低预算
-输出：{"reply":"**D1** 外滩豫园，晚住人民广场如家 · **D2** 法租界 · **D3** 朱家角","plan":null,"plans":[{"dayIndex":0,"city":"上海市","title":"第1天 外滩","dayStart":"09:00","transportSummary":"地铁+步行","stops":[{"name":"外滩","type":"scenic","playMinutes":90,"note":"早晨拍照","transportToNext":"transit"},{"name":"豫园","type":"scenic","playMinutes":90,"note":"园林+城隍庙小吃","transportToNext":"transit"},{"name":"南京路步行街","type":"food","playMinutes":60,"note":"午餐逛街","transportToNext":"transit"},{"name":"如家酒店上海人民广场店","type":"hotel","playMinutes":45,"note":"办理入住"}]},{"dayIndex":1,"city":"上海市","title":"第2天 法租界","dayStart":"09:30","transportSummary":"地铁","stops":[{"name":"如家酒店上海人民广场店","type":"hotel","playMinutes":30,"note":"退房取行李后出发","transportToNext":"transit"},{"name":"田子坊","type":"scenic","playMinutes":90,"note":"弄堂漫步","transportToNext":"transit"},{"name":"新天地","type":"food","playMinutes":90,"note":"午餐","transportToNext":"transit"},{"name":"武康路","type":"scenic","playMinutes":75,"note":"梧桐区散步","transportToNext":"transit"},{"name":"如家酒店上海人民广场店","type":"hotel","playMinutes":45,"note":"办理入住"}]},{"dayIndex":2,"city":"上海市","title":"第3天 水乡","dayStart":"09:00","transportSummary":"公交往返","stops":[{"name":"如家酒店上海人民广场店","type":"hotel","playMinutes":30,"note":"退房取行李后出发","transportToNext":"transit"},{"name":"朱家角古镇","type":"scenic","playMinutes":180,"note":"水乡半日慢游","transportToNext":"transit"},{"name":"虹桥枢纽","type":"other","playMinutes":30,"note":"取行李或返程"}]}],"itinerary":{"city":"上海市","title":"上海三日游","totalDays":3}}`;
-
 const REPLAN_POLICY = `# 真实路线约束下的重排（MUST）
 当前请求不是普通生成，而是前端已经用高德路线和时间引擎验证失败后的重排。
 - 当前会话上下文中的“真实路线校验”是事实：其中交通耗时、到达/离开时间、营业时间和冲突不可忽略或改写；
@@ -348,82 +242,79 @@ const REPLAN_POLICY = `# 真实路线约束下的重排（MUST）
 - 保留 priority=must 的站点、酒店、车站/机场和用户明确指定的站点；保留每一天的 pace，并按该节奏重新满足午餐/休整与时间预算；可调整顺序、交通方式、recommended/optional 站点的游玩时长，必要时先删除 optional，仍超预算才移除 recommended 并在 reply 说明；
 - 优先将早闭馆地点放到更早时段，减少跨区往返；每一天输出完整 stops，不要只输出差异；
 - 如果约束下确实无法同时保留所有 must 站点，仍输出最可执行的方案，并在 reply 中明确指出无法满足的站点与原因。`;
-/** 拼装完整 system prompt */
-export function buildAgentSystemPrompt(context?: AgentChatContext): string {
+
+function latestUserMessage(messages: AgentPromptMessage[]): string {
+  return [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
+}
+
+/**
+ * 路由只负责选择专项 Prompt；生成规则仍由各 Prompt 保持，避免让模型同时判断任务和执行任务。
+ */
+export function resolveAgentPromptMode(
+  messages: AgentPromptMessage[],
+  context?: AgentChatContext
+): AgentPromptMode {
+  if (context?.replan) return 'replan';
+
+  const hasExistingStops = Boolean(
+    context?.existingStopNames?.length || context?.stopsByDay?.some((day) => day.stopNames.length)
+  );
+  const content = latestUserMessage(messages);
+  const isUpdateIntent = /第\s*[一二三四五六七八九十\d]+\s*天|当前|这一天|加上|加入|删除|删掉|替换|调整|修改|重排|换成|重新安排/.test(content);
+
+  return hasExistingStops && isUpdateIntent ? 'update' : 'create';
+}
+
+/** 按任务拼装专项 system prompt，共享可执行路线的核心约束。 */
+export function buildAgentSystemPrompt(
+  context?: AgentChatContext,
+  mode: AgentPromptMode = 'create'
+): string {
+  const taskSections =
+    mode === 'replan'
+      ? [REPLAN_POLICY]
+      : mode === 'update'
+        ? [UPDATE_POLICY]
+        : [CREATE_POLICY, CREATE_DIALOGUE_POLICY];
   const sections = [
     ROLE,
-    TASK_ROUTING,
+    PRIORITY_POLICY,
     OUTPUT_CONTRACT,
     TRANSPORT_STRATEGY,
     POI_GUIDE,
     DAILY_RHYTHM_POLICY,
     TIME_BUDGET_POLICY,
-    DIALOGUE_POLICY,
-    ...(context?.replan ? [REPLAN_POLICY] : []),
-    CONTEXT_RULES,
+    ...taskSections,
     QUALITY_CHECKLIST,
-    FEW_SHOT,
   ];
   const base = sections.join('\n\n');
-  const ctxBlock = formatContextBlock(context);
-  return ctxBlock ? `${base}\n\n# 当前会话上下文\n${ctxBlock}` : base;
+  const ctxBlock = formatContextBlock(context, mode);
+  return ctxBlock ? `${base}\n\n# 当前会话上下文（结构化事实）\n${ctxBlock}` : base;
 }
 
-export function formatContextBlock(context?: AgentChatContext): string {
+export function formatContextBlock(context?: AgentChatContext, mode: AgentPromptMode = 'create'): string {
   if (!context) return '';
-  const lines: string[] = [];
-  if (context.city) lines.push(`- 当前城市：${context.city}`);
-  if (context.dayTitle) lines.push(`- 当前日程标题：${context.dayTitle}`);
-  if (context.planDateLabel) lines.push(`- 用户选中的规划日期：${context.planDateLabel}`);
-  if (context.planStartDate) lines.push(`- 旅程起始日（第 1 天）：${context.planStartDate}`);
-  if (context.activeDayIndex != null) {
-    lines.push(
-      `- 用户当前查看第 ${context.activeDayIndex + 1} 天（dayIndex=${context.activeDayIndex}）`
-    );
-    lines.push(
-      `- 若用户说“今天 / 当前日程 / 这一天”，默认指向 dayIndex=${context.activeDayIndex}`
-    );
-  }
-  if (context.totalDays != null) {
-    lines.push(`- 客户端已有 ${context.totalDays} 天行程槽位`);
-  }
-  if (context.clarificationAnswers && Object.keys(context.clarificationAnswers).length) {
-    lines.push(
-      `- 已确认偏好：${Object.entries(context.clarificationAnswers)
-        .map(([field, value]) => `${field}=${value}`)
-        .join('；')}`
-    );
-  }
-  if (context.clarificationCount != null) {
-    lines.push(`- 本次会话已展示 ${context.clarificationCount} 张偏好选择卡（最多 3 张）`);
-  }
-  if (context.skipClarification) {
-    lines.push('- 用户选择直接生成，请按已有信息与合理默认值规划，不得继续追问');
-  }
-  if (context.replan) {
-    lines.push(`- 当前为第 ${context.replan.attempt} 次真实路线重排：不得追问或返回选择卡，必须直接输出可执行的完整行程`);
-    for (const day of context.replan.days) {
-      lines.push(`- 真实路线校验 · 第 ${day.dayIndex + 1} 天「${day.title}」：${day.dayStart} 出发，${day.pace ?? 'balanced'} 节奏，预计 ${day.endTime} 结束；交通 ${day.totalTravelMinutes} 分钟，游玩 ${day.totalVisitMinutes} 分钟，通勤+游玩+换乘 ${day.totalScheduledMinutes} 分钟`);
-      for (const issue of day.issues) lines.push(`  - 冲突：${issue.message}`);
-      lines.push(
-        `  - 已验证时间轴：${day.stops
-          .map((stop) => `${stop.name}[${stop.arriveTime ?? '?'}-${stop.leaveTime ?? '?'}，游玩${stop.playMinutes}分，路程${stop.travelMinutesToNext ?? 0}分，${stop.priority ?? 'recommended'}]`)
-          .join(' → ')}`
-      );
-    }
-  }
-  if (context.stopsByDay?.length) {
-    for (const d of context.stopsByDay) {
-      const label = d.dayTitle ?? `第 ${d.dayIndex + 1} 天`;
-      if (d.stopNames.length) {
-        lines.push(`- ${label}（dayIndex=${d.dayIndex}）已有：${d.stopNames.join('、')}`);
-      } else {
-        lines.push(`- ${label}（dayIndex=${d.dayIndex}）暂无站点`);
-      }
-    }
-  } else if (context.existingStopNames?.length) {
-    lines.push(`- 该日地图上已有站点：${context.existingStopNames.join('、')}`);
-    lines.push(`- 用户若要修改，请输出包含调整后**完整** stops 列表的新 plan`);
-  }
-  return lines.join('\n');
+  const existingItinerary = context.stopsByDay?.length
+    ? { days: context.stopsByDay }
+    : context.existingStopNames?.length
+      ? { activeDayStops: context.existingStopNames }
+      : undefined;
+  const payload = {
+    task: mode,
+    trip: {
+      city: context.city,
+      totalDays: context.totalDays,
+      planStartDate: context.planStartDate,
+      selectedDate: context.planDateLabel,
+    },
+    selectedDay:
+      context.activeDayIndex != null
+        ? { dayIndex: context.activeDayIndex, title: context.dayTitle }
+        : undefined,
+    confirmedPreferences: context.clarificationAnswers,
+    generation: context.skipClarification ? { useReasonableDefaults: true } : undefined,
+    existingItinerary,
+    routeValidation: context.replan,
+  };
+  return JSON.stringify(payload, (_key, value) => value === undefined ? undefined : value, 2);
 }

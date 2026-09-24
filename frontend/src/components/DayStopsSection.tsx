@@ -41,6 +41,7 @@ export function DayStopsSection({
   onRemoveStop,
   onTransportCompare,
   onReorderStops,
+  visible = true,
 }: {
   activeDayIndex: number;
   day: DayPlan | undefined;
@@ -52,6 +53,8 @@ export function DayStopsSection({
   onRemoveStop: (dayIndex: number, stopId: string) => void;
   onTransportCompare: (from: TripStop, to: TripStop) => void;
   onReorderStops: (fromIndex: number, toIndex: number) => void;
+  /** 面板从隐藏状态切回可见时，重新初始化表格的横向滚动布局。 */
+  visible?: boolean;
 }) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [tableScrollY, setTableScrollY] = useState(280);
@@ -74,7 +77,7 @@ export function DayStopsSection({
       ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [activeDayIndex, day?.dayIndex, displayStops.length]);
+  }, [activeDayIndex, day?.dayIndex, displayStops.length, visible]);
 
   if (!day) return null;
 
@@ -111,13 +114,16 @@ export function DayStopsSection({
         </div>
       </div>
 
-      <div ref={stopsTableWrapRef} className="min-h-0 flex-1 overflow-hidden">
-        <div className="day-stops-table h-full">
+      <div
+        ref={stopsTableWrapRef}
+        className="day-stops-scroll min-h-0 flex-1 overflow-x-scroll overflow-y-hidden"
+      >
+        <div className="day-stops-table h-full min-w-[980px]">
           <Table
-            key={`stops-day-${activeDayIndex}`}
+            key={`stops-day-${activeDayIndex}-${visible ? 'visible' : 'hidden'}`}
             size="middle"
             pagination={false}
-            scroll={{ y: tableScrollY, x: 'max-content' }}
+            scroll={{ y: tableScrollY }}
             rowKey="id"
             dataSource={displayStops}
             locale={{ emptyText }}
