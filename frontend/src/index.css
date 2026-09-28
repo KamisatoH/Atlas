@@ -770,6 +770,42 @@ body {
   scrollbar-gutter: stable;
 }
 
+.trip-panel .trip-stop-note-expanded-row > td {
+  padding: 0 8px 10px 36px !important;
+  background: #fff !important;
+}
+
+.trip-stop-note-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #f4f4f5;
+}
+
+.trip-stop-note-editor > span,
+.mobile-stop-note-editor > span {
+  flex: none;
+  padding-top: 5px;
+  color: #71717a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trip-stop-note-editor .ant-input {
+  border-color: transparent;
+  background: #fafafa;
+  color: #3f3f46;
+  font-size: 12px;
+  resize: none;
+}
+
+.trip-stop-note-editor .ant-input:hover,
+.trip-stop-note-editor .ant-input:focus {
+  border-color: #d4d4d8;
+  background: #fff;
+}
+
 .trip-panel .trip-stops-section {
   min-height: 280px;
 }
@@ -1570,6 +1606,31 @@ body {
     color: #71717a;
     font-size: 12px;
     line-height: 1.45;
+  }
+
+  .mobile-stop-note-editor {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid #f4f4f5;
+  }
+
+  .mobile-stop-note-editor > span {
+    padding-top: 0;
+  }
+
+  .mobile-stop-note-editor .ant-input {
+    border-color: transparent;
+    background: #fafafa;
+    color: #3f3f46;
+    font-size: 12px;
+    resize: none;
+  }
+
+  .mobile-stop-note-editor .ant-input:focus {
+    border-color: #d4d4d8;
+    background: #fff;
   }
 
   .mobile-stop-fields {

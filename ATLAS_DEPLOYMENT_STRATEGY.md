@@ -144,6 +144,7 @@ npm run build
 | `OPENAI_MODEL` | 是 | 例如 `deepseek-chat` |
 | `OPENAI_TIMEOUT_MS` | 否 | 默认 90000，AI 请求较慢时可调大 |
 | `OPENAI_MAX_TOKENS` | 否 | 默认 8192，按模型限制调整 |
+| `AMAP_WEB_SERVICE_KEY` | 推荐 | 高德“Web 服务 API”类型 Key；供 AI 生成前检索少量实时 POI 候选 |
 | `AI_REQUIRE_AUTH` | 推荐 | `true`；仅允许已登录用户调用 AI |
 | `AI_RATE_LIMIT_MAX` | 否 | 默认 20；每 IP 在限流窗口内的最大 AI 请求数 |
 | `AI_RATE_LIMIT_WINDOW_MS` | 否 | 默认 60000；限流窗口（毫秒） |

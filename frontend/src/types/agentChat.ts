@@ -11,7 +11,9 @@ export type ClarificationField =
   | 'budget'
   | 'startArea'
   | 'accommodation'
-  | 'arrival';
+  | 'arrival'
+  | 'eventTime'
+  | 'afterEvent';
 
 export interface AgentClarificationOption {
   value: string;

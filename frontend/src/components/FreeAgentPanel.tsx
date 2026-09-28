@@ -56,7 +56,7 @@ const WELCOME: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    '告诉我**城市**、**天数**和**偏好**（如低预算、亲子或美食），即可生成单日或多日路线。',
+    '告诉我你要去哪里、处理什么事以及大致时间。我可以安排旅行、办事、预约或混合日程。',
   createdAt: Date.now(),
 };
 
@@ -69,6 +69,8 @@ const CLARIFICATION_LABELS: Record<AgentClarification['field'], string> = {
   startArea: '出发区域',
   accommodation: '住宿安排',
   arrival: '抵达安排',
+  eventTime: '核心时间',
+  afterEvent: '后续安排',
 };
 
 function PlanCard({
@@ -118,7 +120,7 @@ function PlanCard({
               </span>
               <PoiTypeTag type={(s.type ?? 'scenic') as PoiType} />
               <Text type="secondary" className="text-xs">
-                游玩 {s.playMinutes ?? 90} 分钟
+                安排 {s.playMinutes ?? 90} 分钟
               </Text>
             </div>
             {s.note && (
@@ -284,7 +286,7 @@ function ClarificationCard({
           <Button type="primary" size="small" disabled={disabled || !detail.trim()} onClick={submitDetail}>
             确认
           </Button>
-          <small>仅填写区域、车站/机场与大致时间，请勿填写订单或证件信息。</small>
+          <small>只补充规划所需的地点、日期或大致时间，请勿填写订单、证件等敏感信息。</small>
         </div>
       )}
       {clarification.allowSkip !== false && (
@@ -987,8 +989,8 @@ export function FreeAgentPanel({
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               activeDateLabel
-                ? `可规划单日或「${days.length}日」连续行程…`
-                : '城市、天数、偏好（信息不足我会追问）…'
+                ? `描述旅行、办事或预约安排，可规划「${days.length}日」日程…`
+                : '告诉我准备去哪里、处理什么事…'
             }
             autoSize={{ minRows: 2, maxRows: 5 }}
             disabled={loading || llmStatus !== 'connected'}

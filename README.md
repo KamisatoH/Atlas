@@ -37,6 +37,7 @@ npm run dev            # http://localhost:5173
 | `server/.env` | `JWT_SECRET` | 登录令牌密钥 |
 | `server/.env` | `OPENAI_API_KEY` | 大模型 API 密钥 |
 | `server/.env` | `OPENAI_BASE_URL` / `OPENAI_MODEL` | 兼容 OpenAI 接口的地址和模型（可选） |
+| `server/.env` | `AMAP_WEB_SERVICE_KEY` | 高德 Web 服务 API Key；生成前检索少量 POI 候选（可选） |
 | 构建参数 | `VITE_AMAP_KEY` / `VITE_AMAP_SECURITY_JS_CODE` | 高德 Web 端配置；生产构建时注入 |
 
 勿将 `.env` 提交到 Git。

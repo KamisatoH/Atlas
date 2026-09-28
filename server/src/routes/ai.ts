@@ -5,6 +5,8 @@ import {
   resolveAgentPromptMode,
 } from '../lib/agentPrompts';
 import { getServerClarification, type ServerClarification } from '../lib/clarificationFlow';
+import { discoverAmapPoiCandidates, type AmapPoiCandidate } from '../lib/amapPoiDiscovery';
+import { resolveScheduleIntent, type ScheduleIntent } from '../lib/scheduleIntent';
 import { LlmParseError, parseAssistantJson, extractAssistantText } from '../lib/llmJson';
 import { authRequired } from '../middleware/auth';
 import { aiRateLimit } from '../middleware/aiRateLimit';
@@ -78,6 +80,7 @@ aiRouter.get('/status', (_req, res) => {
     connected: llmConfigured(),
     model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     baseUrl: process.env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1',
+    amapPoiDiscovery: Boolean(process.env.AMAP_WEB_SERVICE_KEY?.trim()),
   });
 });
 
@@ -109,7 +112,21 @@ aiRouter.post('/chat', aiAuthIfRequired, aiRateLimit, async (req, res) => {
   }
 
   try {
-    const result = await chatWithOpenAI(messages, context, process.env.OPENAI_API_KEY!);
+    let poiCandidates: AmapPoiCandidate[] = [];
+    try {
+      poiCandidates = await discoverAmapPoiCandidates(messages, context);
+    } catch (error) {
+      console.warn('AMap POI discovery failed, continuing without candidates:', error);
+    }
+    const scheduleIntent = resolveScheduleIntent(messages);
+    const result = await chatWithOpenAI(
+      messages,
+      context,
+      process.env.OPENAI_API_KEY!,
+      false,
+      poiCandidates,
+      scheduleIntent
+    );
     res.json(result);
   } catch (e) {
     console.warn('LLM chat failed:', e);
@@ -162,11 +179,13 @@ async function chatWithOpenAI(
   messages: ChatMsg[],
   context: AgentChatContext | undefined,
   apiKey: string,
-  compact = false
+  compact = false,
+  poiCandidates: AmapPoiCandidate[] = [],
+  scheduleIntent: ScheduleIntent = 'leisure'
 ): Promise<ChatPayload> {
   const client = createLlmClient(apiKey);
   const promptMode = resolveAgentPromptMode(messages, context);
-  let sys = buildAgentSystemPrompt(context, promptMode);
+  let sys = buildAgentSystemPrompt(context, promptMode, poiCandidates, scheduleIntent);
   if (compact) {
     sys +=
       '\n\n# 压缩模式\n上次输出过长被截断。请用更精简内容重新输出**完整** JSON：保留每一天满足时间预算所需的核心景点、餐食与住宿节点；note 10～15 字，仍须 plans.length === totalDays。';
@@ -195,7 +214,7 @@ async function chatWithOpenAI(
   } catch (e) {
     if (!compact && e instanceof LlmParseError && e.truncated) {
       console.warn('LLM output truncated, retrying in compact mode');
-      return chatWithOpenAI(messages, context, apiKey, true);
+      return chatWithOpenAI(messages, context, apiKey, true, poiCandidates, scheduleIntent);
     }
     if (e instanceof LlmParseError) {
       console.warn('LLM JSON parse failed, raw length:', extractAssistantText(choice?.message).length);
@@ -205,10 +224,10 @@ async function chatWithOpenAI(
 
   if (choice?.finish_reason === 'length' && !compact) {
     console.warn('LLM finish_reason=length, retrying in compact mode');
-    return chatWithOpenAI(messages, context, apiKey, true);
+    return chatWithOpenAI(messages, context, apiKey, true, poiCandidates, scheduleIntent);
   }
 
-  return normalizeChatPayload(parsed, context);
+  return normalizeChatPayload(parsed, context, scheduleIntent, messages, poiCandidates);
 }
 
 function normalizeOnePlan(
@@ -251,6 +270,43 @@ function normalizeOnePlan(
 
 function normalizePace(value: unknown): TripPace | undefined {
   return value === 'relaxed' || value === 'balanced' || value === 'compact' ? value : undefined;
+}
+
+function constrainAgendaPlan(
+  plan: AgentTripPlan | null,
+  messages: ChatMsg[],
+  poiCandidates: AmapPoiCandidate[]
+): AgentTripPlan | null {
+  if (!plan) return null;
+  const userText = messages
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content)
+    .join('\n');
+  const candidateNames = new Set(poiCandidates.map((candidate) => candidate.name));
+  const stops = plan.stops.filter((stop) => {
+    if (stop.type !== 'scenic' && stop.type !== 'food') return true;
+    if (candidateNames.has(stop.name)) return true;
+    return userText.includes(stop.name) || stop.name.includes(userText.trim());
+  });
+  if (!stops.length) return null;
+  return {
+    ...plan,
+    stops: stops.map((stop, index) => ({
+      ...stop,
+      transportToNext: index < stops.length - 1 ? stop.transportToNext ?? 'transit' : undefined,
+    })),
+  };
+}
+
+function agendaReply(plans: AgentTripPlan[]): string {
+  const mustStops = plans
+    .flatMap((plan) => plan.stops)
+    .filter((stop) => stop.priority === 'must')
+    .map((stop) => stop.name);
+  const core = [...new Set(mustStops)].slice(0, 3);
+  return core.length
+    ? `已按你的安排生成日程，核心事项为「${core.join('、')}」。已预留通勤与办理时间；具体预约时间和所需材料请按实际确认。`
+    : '已按你的核心事项生成日程，并预留了通勤与办理时间；具体预约时间和所需材料请按实际确认。';
 }
 
 function paceFromContext(context: AgentChatContext | undefined): TripPace | undefined {
@@ -297,17 +353,33 @@ function normalizeChatPayload(
     plans?: AgentTripPlan[] | null;
     itinerary?: AgentItineraryMeta | null;
   },
-  context: AgentChatContext | undefined
+  context: AgentChatContext | undefined,
+  scheduleIntent: ScheduleIntent = 'leisure',
+  messages: ChatMsg[] = [],
+  poiCandidates: AmapPoiCandidate[] = []
 ): ChatPayload {
   const activeDayIndex = context?.activeDayIndex;
   const fallbackPace = paceFromContext(context);
-  const mergedMulti = mergeMultiDayPlans(parsed, activeDayIndex, fallbackPace);
-  const single = normalizeOnePlan(parsed.plan, activeDayIndex, fallbackPace);
+  const normalizedMulti = mergeMultiDayPlans(parsed, activeDayIndex, fallbackPace);
+  const mergedMulti =
+    scheduleIntent === 'agenda'
+      ? normalizedMulti
+          .map((plan) => constrainAgendaPlan(plan, messages, poiCandidates))
+          .filter((plan): plan is AgentTripPlan => plan != null)
+      : normalizedMulti;
+  const normalizedSingle = normalizeOnePlan(parsed.plan, activeDayIndex, fallbackPace);
+  const single =
+    scheduleIntent === 'agenda'
+      ? constrainAgendaPlan(normalizedSingle, messages, poiCandidates)
+      : normalizedSingle;
 
   if (mergedMulti.length > 1) {
     const expectedDays = parsed.itinerary?.totalDays ?? mergedMulti.length;
     const plansIncomplete = mergedMulti.length < expectedDays;
-    let reply = String(parsed.reply ?? '已收到，请继续描述你的旅行需求。');
+    let reply =
+      scheduleIntent === 'agenda'
+        ? agendaReply(mergedMulti)
+        : String(parsed.reply ?? '已收到，请继续描述你的日程需求。');
     if (plansIncomplete) {
       reply += `\n\n⚠️ 行程数据不完整（声明 ${expectedDays} 天，实际 ${mergedMulti.length} 天）。请回复「补全第 ${mergedMulti.length + 1} 天」或重新生成。`;
     }
@@ -327,7 +399,10 @@ function normalizeChatPayload(
 
   const one = mergedMulti.length === 1 ? mergedMulti[0] : single;
   return {
-    reply: String(parsed.reply ?? '已收到，请继续描述你的旅行需求。'),
+    reply:
+      scheduleIntent === 'agenda' && one
+        ? agendaReply([one])
+        : String(parsed.reply ?? '已收到，请继续描述你的日程需求。'),
     source: 'openai',
     plan: one ?? null,
     plans: null,

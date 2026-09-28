@@ -114,6 +114,7 @@ docker run --rm -p 3001:3001 \
 | `PORT` | 可选 | `3001`（默认值；若平台分配端口则使用平台值） |
 | `OPENAI_TIMEOUT_MS` | 可选 | `90000` |
 | `OPENAI_MAX_TOKENS` | 可选 | `8192` |
+| `AMAP_WEB_SERVICE_KEY` | 推荐 | 高德“Web 服务 API”类型 Key；供 AI 生成前检索实时 POI 候选，未配置时自动降级 |
 | `AI_REQUIRE_AUTH` | 推荐 | `true`；仅允许已登录用户调用 AI |
 | `AI_RATE_LIMIT_MAX` | 可选 | `20`；每个 IP 在限流窗口内最多调用次数 |
 | `AI_RATE_LIMIT_WINDOW_MS` | 可选 | `60000`；限流窗口（毫秒） |

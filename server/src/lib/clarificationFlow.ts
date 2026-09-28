@@ -1,4 +1,5 @@
 import type { AgentChatContext } from './agentPrompts';
+import { resolveScheduleIntent } from './scheduleIntent';
 
 export type ClarificationField =
   | 'pace'
@@ -8,7 +9,9 @@ export type ClarificationField =
   | 'budget'
   | 'startArea'
   | 'accommodation'
-  | 'arrival';
+  | 'arrival'
+  | 'eventTime'
+  | 'afterEvent';
 
 export type ServerClarification = {
   field: ClarificationField;
@@ -123,6 +126,72 @@ const CARD_BANK: Record<
   },
 };
 
+const AGENDA_CARD_BANK: Record<'eventTime' | 'startArea' | 'afterEvent', ServerClarification> = {
+  eventTime: {
+    field: 'eventTime',
+    question: '这项核心安排的时间确定了吗？',
+    options: [
+      {
+        value: 'confirmed',
+        label: '时间已确定',
+        description: '围绕预约或约定时间倒排日程',
+        requiresDetail: true,
+        detailPlaceholder: '例如：9月28日 10:30',
+      },
+      {
+        value: 'date_only',
+        label: '只确定了日期',
+        description: '当天留出弹性时间块',
+        requiresDetail: true,
+        detailPlaceholder: '例如：9月28日',
+      },
+      { value: 'flexible', label: '时间可协调', description: '选择通勤更顺畅的时段' },
+      { value: 'unknown', label: '暂未确定', description: '先按合理时间预排' },
+    ],
+    allowSkip: true,
+  },
+  startArea: {
+    field: 'startArea',
+    question: '当天从哪里出发？',
+    options: [
+      {
+        value: 'local',
+        label: '从市内出发',
+        description: '按具体区域或地点计算通勤',
+        requiresDetail: true,
+        detailPlaceholder: '例如：北京南站、朝阳区或酒店名称',
+      },
+      {
+        value: 'arrival',
+        label: '抵达后直接前往',
+        description: '把车站或机场作为第一站',
+        requiresDetail: true,
+        detailPlaceholder: '例如：北京南站，09:20 抵达',
+      },
+      { value: 'nearby', label: '就在附近', description: '按短距离通勤安排' },
+      { value: 'unknown', label: '暂未确定', description: '先从核心地点开始规划' },
+    ],
+    allowSkip: true,
+  },
+  afterEvent: {
+    field: 'afterEvent',
+    question: '核心事项完成后，希望怎样安排？',
+    options: [
+      { value: 'finish', label: '办完即结束', description: '不额外添加无关地点' },
+      { value: 'meal', label: '附近安排用餐', description: '只推荐顺路的餐饮地点' },
+      {
+        value: 'more_tasks',
+        label: '还有其他事项',
+        description: '继续串联当天的安排',
+        requiresDetail: true,
+        detailPlaceholder: '填写下一件事或要去的地点',
+      },
+      { value: 'open', label: '保留弹性', description: '结束后预留自由时间' },
+    ],
+    allowSkip: true,
+  },
+};
+
 const FIELD_SIGNALS: Record<ClarificationField, RegExp> = {
   pace: /轻松|慢游|悠闲|休闲|不赶|佛系|均衡|适中|紧凑|特种兵|打卡/,
   interest: /美食|吃|餐厅|小吃|人文|历史|博物馆|亲子|带娃|自然|公园|徒步|购物|艺术|摄影/,
@@ -132,6 +201,8 @@ const FIELD_SIGNALS: Record<ClarificationField, RegExp> = {
   startArea: /从.+(?:出发|开始)|出发地|起点/,
   accommodation: /酒店|住宿|民宿|住在|住.+(?:附近|一带|区域)|入住/,
   arrival: /高铁|火车|动车|飞机|航班|机场|车站|(?:[\u4e00-\u9fa5]{2,8})站|抵达|到达|落地|下午\s*\d{1,2}[：:]\d{2}|上午\s*\d{1,2}[：:]\d{2}/,
+  eventTime: /(?:\d{1,2}[月\/.-]\d{1,2}[日号]?)|(?:上午|中午|下午|晚上|凌晨)?\s*\d{1,2}(?:(?:[：:]\d{2})|点(?:半|\d{1,2}分)?)|预约(?:在|为)?|约好|定在/,
+  afterEvent: /办完|结束后|之后|然后|接着|顺便|返程|回家|用餐|吃饭|还有.+(?:安排|事情|事项)/,
 };
 
 function userText(messages: ChatMessage[]): string {
@@ -143,7 +214,7 @@ function userText(messages: ChatMessage[]): string {
 
 function hasPlanningIntent(text: string, context?: AgentChatContext): boolean {
   if (context?.clarificationCount || Object.keys(context?.clarificationAnswers ?? {}).length) return true;
-  return /行程|攻略|旅行|旅游|游玩|[一二三四五六七八九十\d]+(?:天|日)游|规划|安排|路线|景点|去.+玩/.test(text);
+  return /行程|日程|攻略|旅行|旅游|游玩|[一二三四五六七八九十\d]+(?:天|日)游|规划|安排|路线|景点|去.+玩|提车|取车|看车|办事|办理|开会|面试|就医|体检|拜访|签约|接人|送人|考试|培训|预约|交付|取货|看房/.test(text);
 }
 
 function isExistingPlanUpdate(text: string, context?: AgentChatContext): boolean {
@@ -232,6 +303,13 @@ function chooseNextField(
   return candidates[0]?.field ?? null;
 }
 
+function chooseNextAgendaField(known: Set<ClarificationField>): keyof typeof AGENDA_CARD_BANK | null {
+  if (!known.has('eventTime')) return 'eventTime';
+  if (!known.has('startArea') && !known.has('arrival')) return 'startArea';
+  if (!known.has('afterEvent')) return 'afterEvent';
+  return null;
+}
+
 /**
  * 固定题库状态机：只决定是否需要一张卡和下一张卡是什么，不调用大模型。
  * 城市/天数的开放式补充仍交由对话模型处理；已有行程修改及路线重排从不触发卡片。
@@ -239,9 +317,19 @@ function chooseNextField(
 export function getServerClarification(messages: ChatMessage[], context?: AgentChatContext): ServerClarification | null {
   if (context?.replan || context?.skipClarification || (context?.clarificationCount ?? 0) >= 3) return null;
   const text = userText(messages);
-  if (!hasPlanningIntent(text, context) || isExistingPlanUpdate(text, context) || !hasTripScope(text, context)) return null;
+  if (!hasPlanningIntent(text, context) || isExistingPlanUpdate(text, context)) return null;
 
   const known = knownFields(messages, context);
+  const intent = resolveScheduleIntent(messages);
+  if (intent === 'agenda') {
+    const nextAgenda = chooseNextAgendaField(known);
+    return nextAgenda ? AGENDA_CARD_BANK[nextAgenda] : null;
+  }
+  if (intent === 'mixed') {
+    if (!known.has('eventTime')) return AGENDA_CARD_BANK.eventTime;
+    if (!known.has('startArea') && !known.has('arrival')) return AGENDA_CARD_BANK.startArea;
+  }
+  if (!hasTripScope(text, context)) return null;
   const next = chooseNextField(messages, context, known);
   return next ? CARD_BANK[next] : null;
 }

@@ -65,7 +65,11 @@ export function DayStopsSection({
     if (!el) return;
     const measure = () => {
       const h = el.clientHeight;
-      setTableScrollY(Math.max(160, h - 8));
+      const tableHeader = el.querySelector<HTMLElement>('.ant-table-thead');
+      const headerHeight = tableHeader?.offsetHeight ?? 40;
+      // Ant Table 的 scroll.y 只控制正文高度，需先扣除表头；否则整个表格
+      // 会高于外层容器，最末站点的展开备注会被 overflow 裁掉。
+      setTableScrollY(Math.max(96, h - headerHeight - 8));
     };
     measure();
     const raf = requestAnimationFrame(measure);
@@ -118,7 +122,7 @@ export function DayStopsSection({
         ref={stopsTableWrapRef}
         className="day-stops-scroll min-h-0 flex-1 overflow-x-scroll overflow-y-hidden"
       >
-        <div className="day-stops-table h-full min-w-[980px]">
+        <div className="day-stops-table h-full min-w-[820px]">
           <Table
             key={`stops-day-${activeDayIndex}-${visible ? 'visible' : 'hidden'}`}
             size="middle"
@@ -127,6 +131,25 @@ export function DayStopsSection({
             rowKey="id"
             dataSource={displayStops}
             locale={{ emptyText }}
+            expandable={{
+              expandedRowKeys: displayStops.map((stop) => stop.id),
+              showExpandColumn: false,
+              expandedRowClassName: () => 'trip-stop-note-expanded-row',
+              expandedRowRender: (record: TripStop) => (
+                <label className="trip-stop-note-editor">
+                  <span>备注</span>
+                  <Input.TextArea
+                    value={record.note}
+                    autoSize={{ minRows: 1, maxRows: 3 }}
+                    placeholder="补充预约、入口、联系人或其他提醒"
+                    aria-label={`${record.name}备注`}
+                    onChange={(event) =>
+                      onUpdateStop(activeDayIndex, record.id, { note: event.target.value })
+                    }
+                  />
+                </label>
+              ),
+            }}
             onRow={(_, index) => ({
               className:
                 dragOverIndex === index
@@ -194,16 +217,6 @@ export function DayStopsSection({
                     {r.name}
                   </Text>
                 </div>
-              ),
-            },
-            {
-              title: '说明',
-              width: 160,
-              ellipsis: true,
-              render: (_: unknown, r: TripStop) => (
-                <Text type="secondary" className="text-xs leading-snug">
-                  {r.note || '—'}
-                </Text>
               ),
             },
             {
@@ -318,14 +331,24 @@ export function DayStopsSection({
                     <PoiTypeTag type={stop.type} />
                   </div>
 
-                  {(stop.note || stop.arriveTime || stop.leaveTime) && (
+                  {(stop.arriveTime || stop.leaveTime) && (
                     <div className="mobile-stop-card-meta">
-                      {stop.arriveTime || stop.leaveTime ? (
-                        <span>{stop.arriveTime ?? '—'} – {stop.leaveTime ?? '—'}</span>
-                      ) : null}
-                      {stop.note ? <span>{stop.note}</span> : null}
+                      <span>{stop.arriveTime ?? '—'} – {stop.leaveTime ?? '—'}</span>
                     </div>
                   )}
+
+                  <label className="mobile-stop-note-editor">
+                    <span>备注</span>
+                    <Input.TextArea
+                      value={stop.note}
+                      autoSize={{ minRows: 1, maxRows: 4 }}
+                      placeholder="补充预约、入口、联系人或其他提醒"
+                      aria-label={`${stop.name}备注`}
+                      onChange={(event) =>
+                        onUpdateStop(activeDayIndex, stop.id, { note: event.target.value })
+                      }
+                    />
+                  </label>
 
                   <div className="mobile-stop-fields">
                     <label>

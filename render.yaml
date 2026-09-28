@@ -34,3 +34,5 @@ services:
         value: "90000"
       - key: OPENAI_MAX_TOKENS
         value: "4096"
+      - key: AMAP_WEB_SERVICE_KEY
+        sync: false
